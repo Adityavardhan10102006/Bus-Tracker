@@ -8,8 +8,32 @@ import {
   sendErrorResponse,
 } from './middleware/security.js';
 import { getLivenessStatus, getReadinessStatus, getVersionInfo } from './health/health.js';
+import { handleTelemetryIngestion, type IngestionDataStore } from './routes/telemetry.js';
+import { handleHeartbeatIngestion } from './routes/heartbeat.js';
 
-export function createApiServer() {
+export function createApiServer(
+  customStore?: IngestionDataStore,
+  customHmacKeys?: Record<string, string>,
+) {
+  // Default in-memory store for fallback/dev
+  const store: IngestionDataStore = customStore ?? {
+    async getDevice(id: string) {
+      return { id, status: 'ACTIVE', first_used_at: new Date() };
+    },
+    async getDeviceTokens() {
+      return [];
+    },
+    async getActiveDeviceBusLinks() {
+      return [];
+    },
+  };
+
+  const defaultKeys = customHmacKeys ?? {
+    v1: process.env.DEVICE_TOKEN_HMAC_KEYS
+      ? JSON.parse(process.env.DEVICE_TOKEN_HMAC_KEYS).v1 ?? 'default_vjit_device_secret_key_entropy'
+      : 'default_vjit_device_secret_key_entropy',
+  };
+
   const server = http.createServer((req, res) => {
     const requestId = resolveRequestId(req.headers['x-request-id']);
 
@@ -45,7 +69,6 @@ export function createApiServer() {
       }
 
       if (method === 'GET' && (pathname === '/health/ready' || pathname === '/readyz')) {
-        // Internal/readiness check
         return getReadinessStatus()
           .then(readyStatus => {
             const statusCode = readyStatus.status === 'ok' ? 200 : 503;
@@ -70,7 +93,65 @@ export function createApiServer() {
         return res.end(JSON.stringify(version));
       }
 
-      // Default 404 for unknown endpoints per Part I.3
+      // Read streaming request body for ingestion routes
+      if (method === 'POST') {
+        let body = '';
+        req.on('data', chunk => {
+          body += chunk;
+          // Security limit: abort if body exceeds 64 KB total stream
+          if (body.length > 65536) {
+            req.destroy();
+          }
+        });
+
+        req.on('end', async () => {
+          try {
+            if (pathname === '/api/v1/telemetry') {
+              return await handleTelemetryIngestion(
+                req,
+                res,
+                body,
+                requestId,
+                store,
+                defaultKeys,
+              );
+            }
+
+            if (pathname === '/api/v1/heartbeat') {
+              return await handleHeartbeatIngestion(
+                req,
+                res,
+                body,
+                requestId,
+                store,
+                defaultKeys,
+              );
+            }
+
+            // Default 404 for unknown endpoints per Part I.3
+            return sendErrorResponse(
+              res,
+              404,
+              'NOT_FOUND',
+              `Endpoint ${method} ${pathname} not found or outside authorized scope.`,
+              requestId,
+            );
+          } catch (err) {
+            logger.error('Unhandled route execution error', err as Error);
+            return sendErrorResponse(
+              res,
+              500,
+              'INTERNAL_ERROR',
+              'An unexpected internal error occurred.',
+              requestId,
+            );
+          }
+        });
+
+        return;
+      }
+
+      // Default 404 for non-POST unknown routes
       return sendErrorResponse(
         res,
         404,
