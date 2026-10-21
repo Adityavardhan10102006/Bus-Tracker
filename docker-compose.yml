@@ -1,0 +1,60 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgis/postgis:16-3.4
+    container_name: vjit-bus-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: bus_tracker_dev
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres_local_dev
+    ports:
+      - '5432:5432'
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./packages/db/prisma/roles.sql:/docker-entrypoint-initdb.d/01-roles.sql:ro
+      - ./packages/db/prisma/triggers.sql:/docker-entrypoint-initdb.d/02-triggers.sql:ro
+      - ./packages/db/prisma/rls.sql:/docker-entrypoint-initdb.d/03-rls.sql:ro
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres']
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  minio:
+    image: minio/minio:latest
+    container_name: vjit-bus-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minio_local_admin
+      MINIO_ROOT_PASSWORD: minio_local_password
+    ports:
+      - '9000:9000'
+      - '9001:9001'
+    volumes:
+      - miniodata:/data
+    healthcheck:
+      test: ['CMD', 'curl', '-f', 'http://localhost:9000/minio/health/live']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  mailpit:
+    image: axllent/mailpit:latest
+    container_name: vjit-bus-mailpit
+    restart: unless-stopped
+    ports:
+      - '1025:1025' # SMTP
+      - '8025:8025' # Web UI
+    environment:
+      MP_MAX_MESSAGES: 5000
+      MP_DATABASE: /data/mailpit.db
+    volumes:
+      - mailpitdata:/data
+
+volumes:
+  pgdata:
+  miniodata:
+  mailpitdata:

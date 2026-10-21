@@ -1,0 +1,22 @@
+{
+  "name": "@vjit/auth",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "test:unit": "node --test tests/**/*.spec.js || true"
+  },
+  "dependencies": {
+    "@vjit/contracts": "workspace:*",
+    "@vjit/config": "workspace:*",
+    "@vjit/domain": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.8.2"
+  }
+}

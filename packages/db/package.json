@@ -1,0 +1,25 @@
+{
+  "name": "@vjit/db",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "prisma:generate": "prisma generate",
+    "seed:config": "node ./dist/seed.js",
+    "purge:synthetic": "node ./dist/purge.js"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.4.1",
+    "@vjit/config": "workspace:*",
+    "@vjit/logger": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "prisma": "^6.4.1",
+    "typescript": "^5.8.2"
+  }
+}

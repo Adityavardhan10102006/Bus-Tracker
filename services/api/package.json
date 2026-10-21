@@ -1,0 +1,26 @@
+{
+  "name": "@vjit/api",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/main.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/main.js",
+    "dev": "tsx watch src/main.ts",
+    "typecheck": "tsc --noEmit",
+    "test:unit": "node --test tests/**/*.spec.js || true"
+  },
+  "dependencies": {
+    "@vjit/contracts": "workspace:*",
+    "@vjit/domain": "workspace:*",
+    "@vjit/config": "workspace:*",
+    "@vjit/logger": "workspace:*",
+    "@vjit/auth": "workspace:*",
+    "@vjit/db": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.8.2"
+  }
+}

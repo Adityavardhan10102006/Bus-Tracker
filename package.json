@@ -1,0 +1,26 @@
+{
+  "name": "vjit-bus-tracker",
+  "version": "1.0.0",
+  "private": true,
+  "packageManager": "pnpm@10.28.2",
+  "engines": {
+    "node": ">=20.18.0"
+  },
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "lint": "node ./scripts/lint.mjs",
+    "typecheck": "turbo run typecheck",
+    "test:unit": "node --test packages/**/tests/*.spec.ts services/**/tests/*.spec.ts",
+    "test:int": "turbo run test:int",
+    "verify:no-mock": "node ./scripts/verify-no-mock.mjs",
+    "verify:routes-auth": "node ./scripts/verify-routes-auth.mjs",
+    "db:seed:config": "pnpm --filter @vjit/db seed:config",
+    "db:purge-synthetic": "pnpm --filter @vjit/db purge:synthetic"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "turbo": "^2.4.0",
+    "typescript": "^5.8.2"
+  }
+}

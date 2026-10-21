@@ -1,0 +1,238 @@
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  directUrl  = env("DATABASE_DIRECT_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// User role enum (Specification Section 4)
+enum UserRole {
+  STU // Student
+  FAC // Faculty
+  COR // Transport Coordinator
+  TEC // Fleet Technician
+  SAD // Super Admin
+  MGT // College Management
+  SEC // Security Staff (Read-Only)
+}
+
+// Device lifecycle states (Specification 11.5 & Conflict C-01)
+enum DeviceStatus {
+  PROVISIONED
+  ACTIVE
+  REVOKED
+  RETIRED
+}
+
+// Bus operational states
+enum BusStatus {
+  ACTIVE
+  MAINTENANCE
+  RETIRED
+}
+
+model User {
+  id           String        @id @default(uuid()) @db.Uuid
+  email        String        @unique @db.VarChar(255)
+  name         String        @db.VarChar(128)
+  phone        String?       @db.VarChar(32)
+  role         UserRole      @default(STU)
+  is_active    Boolean       @default(true)
+  created_at   DateTime      @default(now()) @db.Timestamptz
+  updated_at   DateTime      @updatedAt @db.Timestamptz
+  is_synthetic Boolean       @default(false)
+
+  sessions     Session[]
+  mfa_factors  MfaFactor[]
+  recovery_codes RecoveryCode[]
+
+  @@map("users")
+}
+
+model Session {
+  id                 String    @id @default(uuid()) @db.Uuid
+  user_id            String    @db.Uuid
+  refresh_token_hash String    @unique @db.VarChar(255)
+  user_agent         String?   @db.VarChar(512)
+  ip_address         String?   @db.VarChar(64)
+  expires_at         DateTime  @db.Timestamptz
+  last_activity_at   DateTime  @default(now()) @db.Timestamptz
+  revoked_at         DateTime? @db.Timestamptz
+  created_at         DateTime  @default(now()) @db.Timestamptz
+  updated_at         DateTime  @updatedAt @db.Timestamptz
+  is_synthetic       Boolean   @default(false)
+
+  user               User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([user_id])
+  @@map("sessions")
+}
+
+model MfaFactor {
+  id               String    @id @default(uuid()) @db.Uuid
+  user_id          String    @db.Uuid
+  factor_type      String    @default("TOTP") @db.VarChar(32)
+  secret_encrypted String    @db.Text
+  is_verified      Boolean   @default(false)
+  created_at       DateTime  @default(now()) @db.Timestamptz
+  updated_at       DateTime  @updatedAt @db.Timestamptz
+  is_synthetic     Boolean   @default(false)
+
+  user             User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([user_id])
+  @@map("mfa_factors")
+}
+
+model RecoveryCode {
+  id           String    @id @default(uuid()) @db.Uuid
+  user_id      String    @db.Uuid
+  code_hash    String    @db.VarChar(255)
+  consumed_at  DateTime? @db.Timestamptz
+  created_at   DateTime  @default(now()) @db.Timestamptz
+  is_synthetic Boolean   @default(false)
+
+  user         User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([user_id])
+  @@map("recovery_codes")
+}
+
+model EmailOtp {
+  id           String    @id @default(uuid()) @db.Uuid
+  email        String    @db.VarChar(255)
+  otp_hash     String    @db.VarChar(255)
+  attempts     Int       @default(0)
+  locked_until DateTime? @db.Timestamptz
+  consumed_at  DateTime? @db.Timestamptz
+  expires_at   DateTime  @db.Timestamptz
+  created_at   DateTime  @default(now()) @db.Timestamptz
+  is_synthetic Boolean   @default(false)
+
+  @@index([email])
+  @@map("email_otps")
+}
+
+model Setting {
+  id           String    @id @default(uuid()) @db.Uuid
+  key          String    @unique @db.VarChar(128)
+  value        Json
+  description  String?   @db.Text
+  updated_by   String?   @db.Uuid
+  created_at   DateTime  @default(now()) @db.Timestamptz
+  updated_at   DateTime  @updatedAt @db.Timestamptz
+  is_synthetic Boolean   @default(false)
+
+  @@map("settings")
+}
+
+// Append-only audit log (Rule R-09: No UPDATE or DELETE allowed)
+model AuditLog {
+  id           String    @id @default(uuid()) @db.Uuid
+  actor_id     String?   @db.Uuid
+  actor_role   String?   @db.VarChar(32)
+  action       String    @db.VarChar(64)
+  entity       String    @db.VarChar(64)
+  entity_id    String?   @db.VarChar(128)
+  old_values   Json?
+  new_values   Json?
+  ip_address   String?   @db.VarChar(64)
+  request_id   String?   @db.VarChar(64)
+  created_at   DateTime  @default(now()) @db.Timestamptz
+  is_synthetic Boolean   @default(false)
+
+  @@index([actor_id])
+  @@index([entity, entity_id])
+  @@index([created_at])
+  @@map("audit_logs")
+}
+
+model Device {
+  id            String       @id @db.VarChar(32) // HW_xxxx
+  serial_number String       @unique @db.VarChar(64)
+  imei          String       @unique @db.VarChar(15)
+  iccid         String       @db.VarChar(20)
+  status        DeviceStatus @default(PROVISIONED)
+  first_used_at DateTime?    @db.Timestamptz
+  created_at    DateTime     @default(now()) @db.Timestamptz
+  updated_at    DateTime     @updatedAt @db.Timestamptz
+  is_synthetic  Boolean      @default(false)
+
+  tokens        DeviceToken[]
+  bus_links     DeviceBusLink[]
+
+  @@map("devices")
+}
+
+model DeviceToken {
+  id           String    @id @default(uuid()) @db.Uuid
+  device_id    String    @db.VarChar(32)
+  token_hash   String    @unique @db.VarChar(255)
+  key_version  Int       @default(1)
+  is_active    Boolean   @default(true)
+  created_at   DateTime  @default(now()) @db.Timestamptz
+  is_synthetic Boolean   @default(false)
+
+  device       Device    @relation(fields: [device_id], references: [id], onDelete: Cascade)
+
+  @@index([device_id])
+  @@map("device_tokens")
+}
+
+model Bus {
+  id           String          @id @default(uuid()) @db.Uuid
+  bus_number   String          @unique @db.VarChar(32)
+  registration String          @unique @db.VarChar(32)
+  capacity     Int             @default(50)
+  status       BusStatus       @default(ACTIVE)
+  created_at   DateTime        @default(now()) @db.Timestamptz
+  updated_at   DateTime        @updatedAt @db.Timestamptz
+  is_synthetic Boolean         @default(false)
+
+  device_links DeviceBusLink[]
+
+  @@map("buses")
+}
+
+model DeviceBusLink {
+  id           String    @id @default(uuid()) @db.Uuid
+  device_id    String    @db.VarChar(32)
+  bus_id       String    @db.Uuid
+  valid_from   DateTime  @default(now()) @db.Timestamptz
+  valid_to     DateTime? @db.Timestamptz
+  created_by   String?   @db.Uuid
+  created_at   DateTime  @default(now()) @db.Timestamptz
+  is_synthetic Boolean   @default(false)
+
+  device       Device    @relation(fields: [device_id], references: [id], onDelete: Cascade)
+  bus          Bus       @relation(fields: [bus_id], references: [id], onDelete: Cascade)
+
+  @@index([device_id])
+  @@index([bus_id])
+  @@map("device_bus_links")
+}
+
+model FeatureFlag {
+  id           String    @id @default(uuid()) @db.Uuid
+  flag_key     String    @unique @db.VarChar(64)
+  is_enabled   Boolean   @default(false)
+  description  String?   @db.Text
+  created_at   DateTime  @default(now()) @db.Timestamptz
+  updated_at   DateTime  @updatedAt @db.Timestamptz
+  is_synthetic Boolean   @default(false)
+
+  @@map("feature_flags")
+}
+
+model RateCounter {
+  id                String   @id @default(uuid()) @db.Uuid
+  key               String   @unique @db.VarChar(128)
+  counter           Int      @default(1)
+  window_expires_at DateTime @db.Timestamptz
+  created_at        DateTime @default(now()) @db.Timestamptz
+
+  @@map("rate_counters")
+}
