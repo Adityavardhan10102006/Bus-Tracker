@@ -62,6 +62,18 @@ export function haversineDistanceKm(p1: Coordinate, p2: Coordinate): number {
 }
 
 /**
+ * Haversine distance in meters between two WGS84 points
+ */
+export function calculateDistanceMeters(
+  lat1: number,
+  lon1: number,
+  lat2: number,
+  lon2: number,
+): number {
+  return haversineDistanceKm({ latitude: lat1, longitude: lon1 }, { latitude: lat2, longitude: lon2 }) * 1000;
+}
+
+/**
  * Checks for implausible physical speed jumps (> 150 km/h) between consecutive samples
  * Per Specification 11.5 step 12
  */

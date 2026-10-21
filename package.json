@@ -12,7 +12,7 @@
     "build": "turbo run build",
     "lint": "node ./scripts/lint.mjs",
     "typecheck": "turbo run typecheck",
-    "test:unit": "node --test packages/**/tests/*.spec.ts services/**/tests/*.spec.ts",
+    "test:unit": "node --test packages/**/tests/*.spec.ts services/**/tests/*.spec.ts apps/**/tests/*.spec.ts",
     "test:contract": "node --test tests/contract/*.spec.ts",
     "test:int": "turbo run test:int",
     "verify:no-mock": "node ./scripts/verify-no-mock.mjs",

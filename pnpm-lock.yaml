@@ -18,6 +18,28 @@ importers:
         specifier: ^5.8.2
         version: 5.9.3
 
+  apps/mobile:
+    dependencies:
+      '@vjit/config':
+        specifier: workspace:*
+        version: link:../../packages/config
+      '@vjit/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
+      '@vjit/domain':
+        specifier: workspace:*
+        version: link:../../packages/domain
+      '@vjit/ui':
+        specifier: workspace:*
+        version: link:../../packages/ui
+    devDependencies:
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.20.5
+      typescript:
+        specifier: ^5.8.2
+        version: 5.9.3
+
   packages/auth:
     dependencies:
       '@vjit/config':
