@@ -10,13 +10,40 @@ import {
 import { getLivenessStatus, getReadinessStatus, getVersionInfo } from './health/health.js';
 import { handleTelemetryIngestion, type IngestionDataStore } from './routes/telemetry.js';
 import { handleHeartbeatIngestion } from './routes/heartbeat.js';
+import {
+  handleAttendanceScan,
+  handleAttendanceCheckIn,
+  type AttendanceDataStore,
+} from './routes/attendance.js';
+import { handleRouteEta, type EtaDataStore } from './routes/eta.js';
+import {
+  handleNotificationDispatch,
+  type NotificationDataStore,
+} from './routes/notifications.js';
+
+export interface ApiStores {
+  ingestion?: IngestionDataStore | undefined;
+  attendance?: AttendanceDataStore | undefined;
+  eta?: EtaDataStore | undefined;
+  notification?: NotificationDataStore | undefined;
+}
 
 export function createApiServer(
-  customStore?: IngestionDataStore,
+  customStore?: IngestionDataStore | ApiStores,
   customHmacKeys?: Record<string, string>,
 ) {
-  // Default in-memory store for fallback/dev
-  const store: IngestionDataStore = customStore ?? {
+  // Support either single IngestionDataStore (legacy) or full ApiStores
+  let stores: ApiStores = {};
+  if (customStore) {
+    if ('getDevice' in customStore) {
+      stores.ingestion = customStore as IngestionDataStore;
+    } else {
+      stores = customStore as ApiStores;
+    }
+  }
+
+  // Default in-memory stores for fallback/dev
+  const ingestionStore: IngestionDataStore = stores.ingestion ?? {
     async getDevice(id: string) {
       return { id, status: 'ACTIVE', first_used_at: new Date() };
     },
@@ -24,6 +51,36 @@ export function createApiServer(
       return [];
     },
     async getActiveDeviceBusLinks() {
+      return [];
+    },
+  };
+
+  const attendanceStore: AttendanceDataStore = stores.attendance ?? {
+    async getActiveTrip() {
+      return null;
+    },
+    async getStudentRoster() {
+      return null;
+    },
+    async getAttendanceRecord() {
+      return null;
+    },
+  };
+
+  const etaStore: EtaDataStore = stores.eta ?? {
+    async getRouteGeometry() {
+      return null;
+    },
+    async getBusTelemetry() {
+      return null;
+    },
+  };
+
+  const notificationStore: NotificationDataStore = stores.notification ?? {
+    async getRecipientPreferences() {
+      return null;
+    },
+    async getRecentNotificationHistory() {
       return [];
     },
   };
@@ -49,17 +106,6 @@ export function createApiServer(
         path: pathname,
         userAgent: req.headers['user-agent'],
       });
-
-      // Enforce Content-Type for state-changing operations
-      if (!isAllowedContentType(req)) {
-        return sendErrorResponse(
-          res,
-          415,
-          'UNSUPPORTED_MEDIA_TYPE',
-          'Only application/json content type is accepted.',
-          requestId,
-        );
-      }
 
       // Health & Observability routes
       if (method === 'GET' && (pathname === '/health' || pathname === '/healthz')) {
@@ -93,8 +139,26 @@ export function createApiServer(
         return res.end(JSON.stringify(version));
       }
 
-      // Read streaming request body for ingestion routes
+      // GET Route: Real-time ETA along route geometry
+      if (method === 'GET' && pathname === '/api/v1/eta/route') {
+        return handleRouteEta(req, res, url, requestId, etaStore).catch(err => {
+          logger.error('Route ETA handler error', err as Error);
+          sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'Internal error calculating route ETA.', requestId);
+        });
+      }
+
+      // Enforce Content-Type for state-changing write operations
       if (method === 'POST') {
+        if (!isAllowedContentType(req)) {
+          return sendErrorResponse(
+            res,
+            415,
+            'UNSUPPORTED_MEDIA_TYPE',
+            'Only application/json content type is accepted.',
+            requestId,
+          );
+        }
+
         let body = '';
         req.on('data', chunk => {
           body += chunk;
@@ -112,7 +176,7 @@ export function createApiServer(
                 res,
                 body,
                 requestId,
-                store,
+                ingestionStore,
                 defaultKeys,
               );
             }
@@ -123,8 +187,39 @@ export function createApiServer(
                 res,
                 body,
                 requestId,
-                store,
+                ingestionStore,
                 defaultKeys,
+              );
+            }
+
+            if (pathname === '/api/v1/attendance/scan') {
+              return await handleAttendanceScan(
+                req,
+                res,
+                body,
+                requestId,
+                attendanceStore,
+                defaultKeys,
+              );
+            }
+
+            if (pathname === '/api/v1/attendance/check-in') {
+              return await handleAttendanceCheckIn(
+                req,
+                res,
+                body,
+                requestId,
+                attendanceStore,
+              );
+            }
+
+            if (pathname === '/api/v1/notifications/dispatch') {
+              return await handleNotificationDispatch(
+                req,
+                res,
+                body,
+                requestId,
+                notificationStore,
               );
             }
 
