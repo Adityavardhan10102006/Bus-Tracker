@@ -14,3 +14,6 @@ export * from './stop-requests.js';
 export * from './leave.js';
 export * from './notifications.js';
 export * from './faculty.js';
+export * from './compliance.js';
+export * from './device-provisioning.js';
+export * from './firmware.js';
