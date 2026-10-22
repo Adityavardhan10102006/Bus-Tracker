@@ -7,6 +7,13 @@ This directory maintains the phase plans (`docs/progress/PXX-plan.md`), phase co
 ## Directory Contents
 
 - [`coverage.md`](file:///c:/aditya/Bus%20tracker/docs/progress/coverage.md): Master coverage register tracking all feature IDs (F-AUTH to F-PRV), business rules (R-01 to R-20), acceptance criteria (AC-), endpoints, config keys, critical test cases, and edge cases.
+- [`mvp-stabilization-report.md`](file:///c:/aditya/Bus%20tracker/docs/progress/mvp-stabilization-report.md): **MVP Stabilization, PWA & Persistence Report (Current)**.
+- [`E2E-verification-report.md`](file:///c:/aditya/Bus%20tracker/docs/progress/E2E-verification-report.md): End-to-end multi-surface verification audit across mobile and admin surfaces.
+- [`P05-report.md`](file:///c:/aditya/Bus%20tracker/docs/progress/P05-report.md): Phase P5 Attendance, Arrival Estimation & Alerts Report.
+- [`P04-report.md`](file:///c:/aditya/Bus%20tracker/docs/progress/P04-report.md): Phase P4 Coordinator & Technician Consoles Report.
+- [`P02-report.md`](file:///c:/aditya/Bus%20tracker/docs/progress/P02-report.md): Phase P2 Student & Faculty Mobile Experience Report.
+- [`P01-report.md`](file:///c:/aditya/Bus%20tracker/docs/progress/P01-report.md): Phase P1 Ingestion Engine Report.
+- [`P00-report.md`](file:///c:/aditya/Bus%20tracker/docs/progress/P00-report.md): Phase P0 Foundation & Security Scaffolding Report.
 - [`PXX-plan-template.md`](file:///c:/aditya/Bus%20tracker/docs/progress/PXX-plan-template.md): Required template for writing phase plan files before starting work.
 - [`PXX-report-template.md`](file:///c:/aditya/Bus%20tracker/docs/progress/PXX-report-template.md): Required template for writing phase completion reports before requesting approval.
 

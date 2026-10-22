@@ -3,22 +3,31 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "packageManager": "pnpm@10.28.2",
+  "packageManager": "npm@11.19.0",
   "engines": {
     "node": ">=20.18.0"
   },
+  "workspaces": [
+    "apps/*",
+    "services/*",
+    "packages/*",
+    "tools/*"
+  ],
   "scripts": {
     "dev": "turbo run dev",
     "build": "turbo run build",
+    "start": "node services/api/dist/main.js",
     "lint": "node ./scripts/lint.mjs",
     "typecheck": "turbo run typecheck",
+    "test": "npm run test:unit && npm run test:contract",
     "test:unit": "node --test packages/**/tests/*.spec.ts services/**/tests/*.spec.ts apps/**/tests/*.spec.ts",
     "test:contract": "node --test tests/contract/*.spec.ts",
     "test:int": "turbo run test:int",
     "verify:no-mock": "node ./scripts/verify-no-mock.mjs",
     "verify:routes-auth": "node ./scripts/verify-routes-auth.mjs",
-    "db:seed:config": "pnpm --filter @vjit/db seed:config",
-    "db:purge-synthetic": "pnpm --filter @vjit/db purge:synthetic"
+    "verify:prod-clean": "node ./scripts/verify-prod-clean.mjs",
+    "db:seed:config": "npm run --workspace=@vjit/db seed:config",
+    "db:purge-synthetic": "npm run --workspace=@vjit/db purge:synthetic"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

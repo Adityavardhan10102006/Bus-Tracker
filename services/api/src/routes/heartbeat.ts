@@ -120,6 +120,10 @@ export async function handleHeartbeatIngestion(
     satellites: heartbeatData.satellites,
   });
 
+  if (store.recordHeartbeat) {
+    await store.recordHeartbeat(device.id, heartbeatData, receivedAt);
+  }
+
   const response = {
     status: healthResult.health === 'ONLINE' ? 'HEALTHY' : 'DEGRADED',
     pending_action: 'NONE',

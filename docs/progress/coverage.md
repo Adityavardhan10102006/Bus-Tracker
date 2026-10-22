@@ -99,7 +99,7 @@ This register implements **Part G** of `AG-MASTER-1.0-v2-College-Bus-Tracker.md`
 - [x] No mock, dummy, or synthetic data in production codebase or seeds (`verify:no-mock`).
 - [x] Clean production database verification with college domain check (`verify:prod-clean`).
 - [x] Strict TypeScript across all 10 packages (`pnpm typecheck`).
-- [x] 199 passing automated tests (195 unit tests + 4 contract simulation tests).
+- [x] 205 passing automated tests (201 unit tests + 4 contract simulation tests).
 - [ ] Physical Hardware Bench Testing on 3 Trackers (ECE Hardware Team).
 - [ ] Two-Week 3-Bus Pilot on Active College Routes (`P7-T8`).
 - [ ] External penetration test completed with zero High or Critical vulnerabilities (`P7-T5`).

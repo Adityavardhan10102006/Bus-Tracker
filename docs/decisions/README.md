@@ -13,11 +13,15 @@ This directory maintains the authoritative architectural decision records, confl
 
 ---
 
-## Formal Project-Owner Approval Records
+## Formal Project-Owner Approval Records & Architecture Decisions
 
 | Decision ID | Document / Subject | Approval Scope | Implementation Authorized | Status |
 |---|---|---|---|---|
 | [`APR-UI-001`](file:///c:/aditya/Bus%20tracker/docs/decisions/APR-UI-001.md) | [`UI-SPEC-1.0`](file:///c:/aditya/Bus%20tracker/docs/specifications/ui-system-specification.md) (VJIT UI Baseline) | Design and documentation reference only | **NO (Phase P0 Locked)** | **APPROVED FOR PROVISIONAL DESIGN BASELINE ONLY** (Conflict C-06 remains OPEN; Spec PDFs unresolved) |
+| [`ADR-DEV-001`](file:///c:/aditya/Bus%20tracker/docs/decisions/docker-removal.md) | Direct Local Node.js Development Workflow | Development Environment & Tooling | **YES (Applied)** | **ACCEPTED & APPLIED** (Docker removed; Node.js/npm native workflow) |
+| [`ADR-DEV-002`](file:///c:/aditya/Bus%20tracker/docs/decisions/pnpm-retirement.md) | Eventual Retirement of pnpm Lockfile & Workspace Artifacts | Package Manager & Dependency Governance | **YES (Dual-State Applied)** | **PROPOSED / PENDING FINAL PHASE P0 RETIREMENT SIGN-OFF** |
+| [`ADR-PWA-001`](file:///c:/aditya/Bus%20tracker/docs/decisions/pwa-shell-caching.md) | Progressive Web App Architecture & Scoped Shell Caching | Mobile App Distribution & Offline Shell | **YES (Applied)** | **ACCEPTED & APPLIED** (Manifest, Service Worker, Offline Honesty) |
+| [`ADR-STO-001`](file:///c:/aditya/Bus%20tracker/docs/decisions/storage-persistence.md) | Storage Persistence & Truthful Database Health Reporting | API Persistence Layer & Readiness Gate | **YES (Applied)** | **ACCEPTED & APPLIED** (Disk persistence for admin CRUD, truthful DB check) |
 
 ---
 

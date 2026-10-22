@@ -43,8 +43,6 @@ Official registry metadata queried from the npm registry (`registry.npmjs.org`) 
 | Tool / Package | Verified Version | Purpose | Source Registry / URL |
 |---|---|---|---|
 | `vitest` | `5.0.5` | Fast unit test runner for domain & backend | [npm: vitest](https://registry.npmjs.org/vitest) |
-| `testcontainers` | `12.2.1` | Integration test containers orchestration | [npm: testcontainers](https://registry.npmjs.org/testcontainers) |
-| `@testcontainers/postgresql` | `12.2.1` | Disposable PostgreSQL + PostGIS containers | [npm: @testcontainers/postgresql](https://registry.npmjs.org/@testcontainers/postgresql) |
 | `supertest` | `7.3.1` | HTTP integration & route authorisation testing | [npm: supertest](https://registry.npmjs.org/supertest) |
 | `playwright` | `1.64.1` | Web end-to-end testing | [npm: playwright](https://registry.npmjs.org/playwright) |
 | `@axe-core/playwright` | `4.14.0` | Automated WCAG 2.1 AA accessibility checks | [npm: @axe-core/playwright](https://registry.npmjs.org/@axe-core/playwright) |
@@ -118,7 +116,7 @@ Official registry metadata queried from the npm registry (`registry.npmjs.org`) 
 
 ### 4.2 Compatibility of NestJS with Chosen Node.js LTS
 - **Current State**: NestJS v12.x supports **Node.js 22 LTS (v22.12+)** and **Node.js 24 (Active LTS)**.
-- **Runtime Choice**: Node.js 24 (Active LTS) is recommended as the target runtime for API containers, with Node.js 22 as the minimum supported baseline.
+- **Runtime Choice**: Node.js 24 (Active LTS) or Node.js 22 LTS is recommended as the target runtime for the API server, with Node.js 22 as the minimum supported baseline.
 - **Verification Result**: COMPATIBLE.
 
 ### 4.3 Compatibility of Prisma with PostgreSQL 16

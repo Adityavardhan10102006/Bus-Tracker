@@ -4,30 +4,29 @@ This dashboard tracks the macro development status, gating milestones, blocker r
 
 ---
 
-## 1. Current Phase: Preparation Phase
+## 1. Current Phase: MVP Stabilization & Production Readiness Complete
 
-The project is currently in the **Preparation / Pre-P0 Phase**. 
-- Application code, package installation, or code scaffolding: **NOT STARTED (LOCKED)**.
-- Status: **Documentation & Governance Setup Complete; Research Gated**.
+The project has completed **Phase P0 through Phase P5**, delivering a stabilized, installable (PWA) MVP with restart-persistent administrative storage and full hardware contract replay verification:
+- Application status: **MVP Complete & Running** (205 automated tests passing; 0 lint/mock violations).
+- Governance status: **Phases P0–P5 Implemented; Phase P6 & P7 Gated on Physical Pilot & Conflict Owner Approvals**.
 
 ---
 
 ## 2. Phase Lifecycle & Milestone Dashboard
 
-Per Part C of the master plan:
+Per Part C of `AG-MASTER-1.0-v2-College-Bus-Tracker.md`:
 
-| Phase ID | Milestone (Section 39) | Phase Title | Status | Prerequisite Gates & Blockers |
+| Phase ID | Milestone | Phase Title | Status | Prerequisite Gates & Blockers |
 |---|---|---|---|---|
-| **PREP** | M-PREP | Documentation, Rules & Research Setup | **IN PROGRESS** | `AGENTS.md` verified; decision and conflict registers established; RS-01 and RS-02 complete; `UI-SPEC-1.0` provisionally approved under [`APR-UI-001`](file:///c:/aditya/Bus%20tracker/docs/decisions/APR-UI-001.md) (design baseline only; Phase P0 locked). |
-| **RESEARCH** | M-RES | Prerequisite Research (RS-01 to RS-16) | **BLOCKED / PARTIAL** | RS-01 and RS-02 completed; RS-03 to RS-15 pending research authorization; RS-16 blocked by missing `HW-SPEC-1.0.pdf`. |
-| **P0** | Milestone M0 | Foundation | **LOCKED** | Gated on RS-01..RS-16 completion, `conflicts.md` sign-off, spec PDFs resolution, and formal implementation approval (Per `APR-UI-001`). |
-| **P1** | Milestone M1 | Ingestion Engine (*Highest Priority*) | **LOCKED** | Gated on Phase P0 completion, CI green, and SSO test tenant approval. |
-| **P2** | Milestone M2 | Student and Faculty Apps | **LOCKED** | Gated on Phase P1 ingestion acceptance and simulator pass. |
-| **P3** | Milestone M3 | Driver App and Phone Tracking | **LOCKED / BLOCKED** | Gated on Phase P2, Decision 5, and formal disposition of Conflict C-06 (removal of driver app). |
-| **P4** | Milestone M4 | Coordinator & Technician Consoles | **LOCKED** | Gated on Phase P3 and hardware device contract tests. |
-| **P5** | Milestone M5 | Attendance and Alerts | **LOCKED** | Gated on Phase P4 and Decision 4 / C-06 (boarding method confirmation). |
-| **P6** | Milestone M6 | Reports and Privacy | **LOCKED** | Gated on Phase P5 and Decisions 7 & 8 (legal counsel review). |
-| **P7** | Milestone M7 | Hardening and Pilot (*Release Gate*) | **LOCKED** | Gated on Phase P6, penetration testing, load test, pilot exit criteria, and Coverage Gate. |
+| **PREP** | M-PREP | Documentation, Rules & Governance Setup | **COMPLETE** | `AGENTS.md` active; conflict and decision registers maintained. |
+| **P0** | Milestone M0 | Foundation & Security Scaffolding | **COMPLETE** | Pure Node.js workflow, Zod contracts, auth, and database schemas. |
+| **P1** | Milestone M1 | Ingestion Engine (*Highest Priority*) | **COMPLETE** | 14-step ingestion pipeline, HMAC auth, replay contract tests passing. |
+| **P2** | Milestone M2 | Student and Faculty Mobile Experience | **COMPLETE** | Leaflet tracking, timetable, low-bandwidth fallback, PWA installability & offline shell. |
+| **P3** | Milestone M3 | Driver App & Phone Tracking | **DEFERRED / REPLACED** | Driver mobile removed per Conflict C-06 in favor of dedicated hardware tracking. |
+| **P4** | Milestone M4 | Coordinator & Technician Consoles | **COMPLETE** | Fleet operations deck, device management, maintenance tickets, disk persistence. |
+| **P5** | Milestone M5 | Attendance, Arrival Estimation & Alerts | **COMPLETE** | Polyline ETA, 8-step scan validator, absence anomaly engine, emergency SOS. |
+| **P6** | Milestone M6 | Reports and Statutory Privacy Rights | **SCHEDULED** | Gated on Legal/IT counsel review (Decisions 7 & 8). |
+| **P7** | Milestone M7 | Physical Pilot & Hardening (*Release Gate*) | **PENDING FIELD PILOT** | Gated on physical hardware bench tests, 2-week 3-bus pilot, and final sign-off. |
 
 ---
 

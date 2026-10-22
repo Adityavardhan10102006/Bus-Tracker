@@ -125,7 +125,7 @@ Read: sections 1, 2, 4, 6, 7, 8, 10 (identity and access tables), 28, 31, 33, 34
 
 - P0-T1. Monorepo: pnpm workspaces and Turborepo, the layout in Part I.1, root scripts from Part I.2, ESLint with the unsafe-pattern rules, Prettier, TypeScript strict configuration shared by all packages, Renovate, lockfiles committed.
 - P0-T2. Configuration loader in `packages/config`: Zod schema for every environment variable in Part I.4. Refuses to start when a required variable is missing, when `NODE_ENV` is `production` while `APP_ENV` is `local`, or when a secret equals a known placeholder value. Loads the defaults table from Part I.5.
-- P0-T3. Local environment with Docker Compose: PostgreSQL 16 with PostGIS, MinIO (S3-compatible), Mailpit (email). Testcontainers for integration tests. The compose file contains no real credentials.
+- P0-T3. Local environment & direct Node.js workflow: Local PostgreSQL 16 with PostGIS, MinIO (S3-compatible), Mailpit (email). Direct Node.js development without Docker requirement (ADR-DEV-001). The environment file contains no real credentials.
 - P0-T4. Database roles and grants: `app_migrator` (owner, migrations only), `app_runtime` (API; no BYPASSRLS, not superuser, not owner), `app_worker` (only the grants the jobs need). The audit table grants no UPDATE, DELETE, or TRUNCATE to any application role, and a trigger rejects updates and deletes (specification R-09).
 - P0-T5. Migration framework (Prisma migrations, applied as `app_migrator`). Expand-only rule: a migration may add tables, columns, and indexes. Destructive changes ship in a later release after the code no longer uses the old shape. Every partial unique index named in specification section 10 is created in a migration with a test.
 - P0-T6. Initial schema from specification section 10 (all tables), with the common columns from Part I.6, CHECK constraints for enumerations (text, never database enum types), foreign-key indexes, citext emails, and geography types. Row-level security enabled and forced on the tables listed in Part I.6.3.
@@ -597,7 +597,7 @@ bus-tracker/
 | lint | ESLint, Prettier check, unsafe-pattern rules, no-restricted-imports for fixtures and simulator |
 | typecheck | TypeScript across packages |
 | test:unit | Vitest unit tests |
-| test:int | Integration tests on Testcontainers PostgreSQL with PostGIS |
+| test:int | Integration tests on local PostgreSQL with PostGIS (direct Node.js workflow) |
 | test:contract | Replays recorded device messages from every firmware version |
 | test:e2e:web | Playwright |
 | test:e2e:mobile | Maestro |
@@ -780,7 +780,7 @@ I.6.4 Append-only tables (no UPDATE or DELETE grant; trigger rejects changes): a
 | Bot protection | Cloudflare Turnstile, verified on the server |
 | CSV | csv-parse in streaming mode |
 | Logging and errors | pino; Sentry; OpenTelemetry |
-| Testing | Vitest, Testcontainers (PostgreSQL with PostGIS), Supertest, Playwright, @axe-core/playwright, Maestro, k6 |
+| Testing | Vitest, Local PostgreSQL with PostGIS, Supertest, Playwright, @axe-core/playwright, Maestro, k6 |
 | Security tooling | Semgrep, CodeQL, gitleaks, OWASP ZAP baseline, pnpm audit, Renovate |
 | CI/CD | GitHub Actions; EAS Build and EAS Submit for mobile |
 | Time | Stored UTC; displayed Asia/Kolkata |

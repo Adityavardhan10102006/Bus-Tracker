@@ -19,13 +19,11 @@ jobs:
         with:
           node-version: 22
 
-      - name: Install pnpm
-        uses: pnpm/action-setup@v3
-        with:
-          version: 9
-
       - name: Verify Anti-Mock Rules (Rule B.2)
         run: node scripts/verify-no-mock.mjs
+
+      - name: Verify Clean Repository (Zero Docker)
+        run: node scripts/verify-prod-clean.mjs
 
       - name: Custom Static Analysis Lint
         run: node scripts/lint.mjs
@@ -34,4 +32,4 @@ jobs:
         run: node scripts/verify-routes-auth.mjs
 
       - name: Run Test Suites
-        run: npm run test:unit
+        run: npm test

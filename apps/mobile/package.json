@@ -11,10 +11,10 @@
     "test:unit": "node --test tests/**/*.spec.js || true"
   },
   "dependencies": {
-    "@vjit/contracts": "workspace:*",
-    "@vjit/domain": "workspace:*",
-    "@vjit/config": "workspace:*",
-    "@vjit/ui": "workspace:*"
+    "@vjit/contracts": "*",
+    "@vjit/domain": "*",
+    "@vjit/config": "*",
+    "@vjit/ui": "*"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

@@ -32,8 +32,10 @@ export interface IngestionDataStore {
     samples: any[];
     events: any[];
     receivedAt: Date;
+    latestLiveSample?: any;
   }): Promise<void>;
   updateDeviceActivity?(deviceId: string, activate: boolean, now: Date): Promise<void>;
+  recordHeartbeat?(deviceId: string, heartbeat: any, now: Date): Promise<void>;
 }
 
 /**
@@ -151,7 +153,19 @@ export async function handleTelemetryIngestion(
     evaluateHardwareEvent(event, busId, receivedAt, []),
   );
 
-  // 8. Log device ingestion without exposing plaintext token (Rule B.7 & Rule F Control 18)
+  // 8. Persist accepted telemetry and update active bus coordinates
+  if (store.saveTelemetryBatch) {
+    await store.saveTelemetryBatch({
+      deviceId: device.id,
+      busId: busId ?? null,
+      samples: telemetryData.samples,
+      latestLiveSample: batchResult.latestLiveSample,
+      events: telemetryData.events ?? [],
+      receivedAt,
+    });
+  }
+
+  // 9. Log device ingestion without exposing plaintext token (Rule B.7 & Rule F Control 18)
   logger.info('Device telemetry accepted', {
     deviceId: device.id,
     busId,

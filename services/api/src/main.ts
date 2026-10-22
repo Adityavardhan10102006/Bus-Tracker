@@ -1,4 +1,6 @@
 import http from 'node:http';
+import fs from 'node:fs';
+import path from 'node:path';
 import { logger, runWithRequestContext } from '@vjit/logger';
 import { loadAndValidateConfig } from '@vjit/config';
 import {
@@ -20,6 +22,12 @@ import {
   handleNotificationDispatch,
   type NotificationDataStore,
 } from './routes/notifications.js';
+import { fleetDataStore } from './store/fleet-data-store.js';
+import { handleFleetApiRoutes } from './routes/fleet-routes.js';
+import { renderPortalHtml } from './ui/portal-page.js';
+import { renderMobileHtml } from './ui/mobile-page.js';
+import { renderAdminHtml } from './ui/admin-page.js';
+import { getManifestJson, getServiceWorkerJs } from './ui/pwa.js';
 
 export interface ApiStores {
   ingestion?: IngestionDataStore | undefined;
@@ -42,53 +50,16 @@ export function createApiServer(
     }
   }
 
-  // Default in-memory stores for fallback/dev
-  const ingestionStore: IngestionDataStore = stores.ingestion ?? {
-    async getDevice(id: string) {
-      return { id, status: 'ACTIVE', first_used_at: new Date() };
-    },
-    async getDeviceTokens() {
-      return [];
-    },
-    async getActiveDeviceBusLinks() {
-      return [];
-    },
-  };
-
-  const attendanceStore: AttendanceDataStore = stores.attendance ?? {
-    async getActiveTrip() {
-      return null;
-    },
-    async getStudentRoster() {
-      return null;
-    },
-    async getAttendanceRecord() {
-      return null;
-    },
-  };
-
-  const etaStore: EtaDataStore = stores.eta ?? {
-    async getRouteGeometry() {
-      return null;
-    },
-    async getBusTelemetry() {
-      return null;
-    },
-  };
-
-  const notificationStore: NotificationDataStore = stores.notification ?? {
-    async getRecipientPreferences() {
-      return null;
-    },
-    async getRecentNotificationHistory() {
-      return [];
-    },
-  };
+  // Integrated in-memory stores with full VJIT network seed data
+  const ingestionStore: IngestionDataStore = stores.ingestion ?? fleetDataStore;
+  const attendanceStore: AttendanceDataStore = stores.attendance ?? fleetDataStore;
+  const etaStore: EtaDataStore = stores.eta ?? fleetDataStore;
+  const notificationStore: NotificationDataStore = stores.notification ?? fleetDataStore;
 
   const defaultKeys = customHmacKeys ?? {
     v1: process.env.DEVICE_TOKEN_HMAC_KEYS
-      ? JSON.parse(process.env.DEVICE_TOKEN_HMAC_KEYS).v1 ?? 'default_vjit_device_secret_key_entropy'
-      : 'default_vjit_device_secret_key_entropy',
+      ? JSON.parse(process.env.DEVICE_TOKEN_HMAC_KEYS).v1 ?? 'vjit_device_token_hmac_entropy_keyval_cluster_987'
+      : 'vjit_device_token_hmac_entropy_keyval_cluster_987',
   };
 
   const server = http.createServer((req, res) => {
@@ -107,7 +78,7 @@ export function createApiServer(
         userAgent: req.headers['user-agent'],
       });
 
-      // Health & Observability routes
+      // 1. Health & Observability routes
       if (method === 'GET' && (pathname === '/health' || pathname === '/healthz')) {
         const status = getLivenessStatus();
         res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
@@ -139,7 +110,70 @@ export function createApiServer(
         return res.end(JSON.stringify(version));
       }
 
-      // GET Route: Real-time ETA along route geometry
+      // 2. Static Assets & Progressive Web App (PWA) Manifest & Service Worker
+      if (method === 'GET' && (pathname === '/manifest.json' || pathname === '/app/manifest.json')) {
+        const manifest = getManifestJson();
+        res.writeHead(200, {
+          'Content-Type': 'application/manifest+json; charset=utf-8',
+          'Cache-Control': 'public, max-age=3600',
+        });
+        return res.end(manifest);
+      }
+
+      if (method === 'GET' && pathname === '/sw.js') {
+        const sw = getServiceWorkerJs();
+        res.writeHead(200, {
+          'Content-Type': 'application/javascript; charset=utf-8',
+          'Service-Worker-Allowed': '/',
+          'Cache-Control': 'no-cache',
+        });
+        return res.end(sw);
+      }
+
+      // Static Assets: VJIT Emblem (preserved 1.242:1 aspect ratio)
+      if (method === 'GET' && (pathname === '/assets/vjit-logo.png' || pathname === '/vjit-logo.png')) {
+        const logoPath = path.resolve(process.cwd(), 'apps/mobile/assets/vjit-logo.png');
+        if (fs.existsSync(logoPath)) {
+          const data = fs.readFileSync(logoPath);
+          res.writeHead(200, {
+            'Content-Type': 'image/png',
+            'Cache-Control': 'public, max-age=86400',
+          });
+          return res.end(data);
+        }
+      }
+
+      // 3. Application Web UI Surfaces (UI-SPEC-1.0 & MVP deliverables)
+      if (method === 'GET') {
+        if (pathname === '/' || pathname === '/portal') {
+          const html = renderPortalHtml();
+          res.writeHead(200, {
+            'Content-Type': 'text/html; charset=utf-8',
+            'X-Frame-Options': 'SAMEORIGIN',
+          });
+          return res.end(html);
+        }
+
+        if (pathname === '/app' || pathname === '/mobile') {
+          const html = renderMobileHtml();
+          res.writeHead(200, {
+            'Content-Type': 'text/html; charset=utf-8',
+            'X-Frame-Options': 'SAMEORIGIN',
+          });
+          return res.end(html);
+        }
+
+        if (pathname === '/admin' || pathname === '/console') {
+          const html = renderAdminHtml();
+          res.writeHead(200, {
+            'Content-Type': 'text/html; charset=utf-8',
+            'X-Frame-Options': 'SAMEORIGIN',
+          });
+          return res.end(html);
+        }
+      }
+
+      // 4. GET Route: Real-time ETA along route geometry
       if (method === 'GET' && pathname === '/api/v1/eta/route') {
         return handleRouteEta(req, res, url, requestId, etaStore).catch(err => {
           logger.error('Route ETA handler error', err as Error);
@@ -147,7 +181,40 @@ export function createApiServer(
         });
       }
 
-      // Enforce Content-Type for state-changing write operations
+      // 5. Fleet and Snapshot REST APIs (Snapshot, Routes, Buses, Devices, Alerts, RBAC, Simulation)
+      if (
+        pathname.startsWith('/api/v1/snapshot') ||
+        pathname.startsWith('/api/v1/routes') ||
+        pathname.startsWith('/api/v1/buses') ||
+        pathname.startsWith('/api/v1/devices') ||
+        pathname.startsWith('/api/v1/alerts') ||
+        pathname.startsWith('/api/v1/me') ||
+        pathname.startsWith('/api/v1/auth') ||
+        pathname.startsWith('/api/v1/demo') ||
+        (pathname === '/api/v1/attendance' || pathname === '/api/v1/attendance/manual-checkin') ||
+        pathname.startsWith('/api/v1/maintenance') ||
+        pathname.startsWith('/api/v1/settings') ||
+        pathname.startsWith('/api/v1/audit-logs')
+      ) {
+        return handleFleetApiRoutes(req, res, url, requestId)
+          .then(handled => {
+            if (!handled) {
+              sendErrorResponse(
+                res,
+                404,
+                'NOT_FOUND',
+                `Endpoint ${method} ${pathname} not found or outside authorized scope.`,
+                requestId,
+              );
+            }
+          })
+          .catch(err => {
+            logger.error('Fleet API route handling error', err as Error);
+            sendErrorResponse(res, 500, 'INTERNAL_ERROR', 'Internal server error in fleet API.', requestId);
+          });
+      }
+
+      // 6. Ingestion & Attendance Write Routes (Telemetry, Heartbeat, Attendance, Notifications)
       if (method === 'POST') {
         if (!isAllowedContentType(req)) {
           return sendErrorResponse(
@@ -263,6 +330,20 @@ export function createApiServer(
 // Self-starting when executed directly
 if (process.argv[1]?.endsWith('main.js') || process.argv[1]?.endsWith('main.ts')) {
   try {
+    if (typeof process.loadEnvFile === 'function') {
+      try {
+        process.loadEnvFile();
+      } catch {
+        // .env file optional
+      }
+    }
+
+    // Baseline fallbacks for direct local demonstration
+    process.env.DATABASE_URL = process.env.DATABASE_URL || 'postgresql://app_runtime:runtime_secure_pass_phrase_vjit_2026@localhost:5432/bus_tracker_dev?schema=public';
+    process.env.JWT_SECRET = process.env.JWT_SECRET || 'vjit_jwt_signing_key_production_grade_entropy_2026_x89a';
+    process.env.DEVICE_TOKEN_HMAC_KEYS = process.env.DEVICE_TOKEN_HMAC_KEYS || JSON.stringify({ v1: 'vjit_device_token_hmac_entropy_keyval_cluster_987' });
+    process.env.QR_HMAC_KEYS = process.env.QR_HMAC_KEYS || JSON.stringify({ v1: 'vjit_qr_signature_hmac_entropy_keyval_cluster_456' });
+
     const config = loadAndValidateConfig();
     const server = createApiServer();
 
@@ -271,6 +352,9 @@ if (process.argv[1]?.endsWith('main.js') || process.argv[1]?.endsWith('main.ts')
         port: config.PORT,
         appEnv: config.APP_ENV,
         nodeEnv: config.NODE_ENV,
+        portalUrl: `http://localhost:${config.PORT}/`,
+        studentAppUrl: `http://localhost:${config.PORT}/app`,
+        adminConsoleUrl: `http://localhost:${config.PORT}/admin`,
       });
     });
   } catch (err) {

@@ -40,6 +40,8 @@ export const busSnapshotSchema = z.object({
   occupancy: z.number().int().min(0).nullable(),
   trip_id: z.string().uuid().nullable(),
   service_date: z.string(),
+  is_simulated: z.boolean().optional(),
+  telemetry_source: z.enum(['HARDWARE', 'PHONE', 'DEMO_SIMULATION']).optional(),
 });
 
 export type BusSnapshot = z.infer<typeof busSnapshotSchema>;

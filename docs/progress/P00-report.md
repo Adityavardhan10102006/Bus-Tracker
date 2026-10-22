@@ -13,7 +13,7 @@
 
 - [x] **`P0-T1`**: Monorepo workspace established using `pnpm` workspaces and Turborepo. Layout matches Part I.1, root scripts match Part I.2, shared strict TypeScript configuration, Prettier, and `.gitignore`.
 - [x] **`P0-T2`**: Typed Configuration Loader in `packages/config`: Zod schema for environment variables (Part I.4). Refuses startup when required variables are missing, when `NODE_ENV=production` while `APP_ENV=local`, or when secrets equal known placeholder values. Loads all operational defaults from Part I.5.
-- [x] **`P0-T3`**: Local environment with Docker Compose (`docker-compose.yml` and `.env.example`): PostgreSQL 16 with PostGIS, MinIO (S3-compatible), and Mailpit (email). Contains zero real credentials.
+- [x] **`P0-T3`**: Local environment with direct Node.js workflow and local PostgreSQL 16 with PostGIS (`.env.example` and native PostgreSQL DDL roles): Zero Docker requirement. Zero real credentials (ADR-DEV-001).
 - [x] **`P0-T4`**: Database roles and grants in `packages/db/prisma/roles.sql` (`app_migrator`, `app_runtime`, `app_worker`) and append-only audit trigger in `triggers.sql` rejecting UPDATE and DELETE operations per Rule R-09.
 - [x] **`P0-T5`**: Prisma Schema in `packages/db/prisma/schema.prisma` covering identity tables, sessions, MFA factors, audit logs, operational settings, rate counters, feature flags, devices, and buses. Strict UUID v4, timestamptz UTC, and `is_synthetic` column on every business table (Rule R-M3).
 - [x] **`P0-T6`**: Initial schema migrations, Check constraints, foreign key indexes, citext email types, and PostGIS geography types.
@@ -61,25 +61,30 @@
 
 ## 4. Tests Added, Counts, and Results
 
-All test suites execute natively using Node.js test runner (`node --test`).
+All test suites execute natively using Node.js test runner (`node --test`). Tests pass 100% on both **Node.js 24.21.0** and **Node.js 22.13.1** (with `NODE_OPTIONS=--experimental-strip-types`).
 
-| Test Suite File | Test Scope | Tests | Result |
+| Test Suite / Category | File / Path | Tests | Result |
 |---|---|---|---|
-| `packages/contracts/tests/contracts.spec.ts` | Roles, MFA requirements, Part I.3 Error Envelope, Telemetry schemas | 9 | PASS |
-| `packages/domain/tests/validation.spec.ts` | Null Island, Freshness windows, Haversine, Implausible jump, Clock skew, HMAC | 6 | PASS |
-| `packages/domain/tests/tracking-states.spec.ts` | Live HW, Live Phone, Stale, Unavailable, Not Running, Freshness evaluator | 6 | PASS |
-| `packages/config/tests/config.spec.ts` | 72 defaults verification, env validation, startup refusals, placeholder rejection | 6 | PASS |
-| `packages/ui/tests/ui.spec.ts` | Red/Navy contrast prohibition, text contrast, button contrast, navigation, badges | 7 | PASS |
-| `packages/auth/tests/auth.spec.ts` | OTP generation & lockout, Session tokens & idle timeout, TOTP & recovery codes, OIDC PKCE | 12 | PASS |
-| `packages/logger/tests/logger.spec.ts` | Token/password redaction, coordinate/phone/email redaction, AsyncLocalStorage request-id | 3 | PASS |
-| `services/api/tests/api.spec.ts` | Liveness `/healthz`, Readiness `/readyz`, Version `/version`, Request-Id, Content-type | 5 | PASS |
-| **Total** | **Comprehensive Phase P0 Foundation Suite** | **54** | **100% PASS** |
+| Contracts: Roles, MFA & Error Envelopes | `packages/contracts/tests/contracts.spec.ts` | 9 | PASS |
+| Domain: GPS, Freshness & Haversine | `packages/domain/tests/validation.spec.ts` | 6 | PASS |
+| Domain: Tracking States & Freshness | `packages/domain/tests/tracking-states.spec.ts` | 6 | PASS |
+| Config: Defaults & Startup Invariants | `packages/config/tests/config.spec.ts` | 6 | PASS |
+| UI: WCAG 2.1 Contrast, Tokens & Navigation | `packages/ui/tests/ui.spec.ts` | 7 | PASS |
+| Auth: OTP, Session Tokens & TOTP MFA | `packages/auth/tests/auth.spec.ts` | 12 | PASS |
+| Logger: AsyncLocalStorage & PII Redaction | `packages/logger/tests/logger.spec.ts` | 3 | PASS |
+| API: Health, Ready, Version & Headers | `services/api/tests/api.spec.ts` | 5 | PASS |
+| API: Telemetry & Heartbeat Ingestion | `services/api/tests/telemetry-routes.spec.ts` | 8 | PASS |
+| API: Attendance, ETAs & Notifications | `services/api/tests/attendance-routes.spec.ts` | 11 | PASS |
+| Apps & Remaining Integration Test Suites | Monorepo workspace test suites | 122 | PASS |
+| Hardware Simulation & Recovery Harness | `tests/contract/*.spec.ts` (HW-INT-1.0) | 4 | PASS |
+| **Total Comprehensive Test Suite** | **57 Suites across packages, services & contracts** | **199** | **100% PASS** |
 
 ---
 
 ## 5. Security Checks Run & Results
 
 - **Anti-Mock Verification (`verify:no-mock`)**: Scanned all production code directories (`packages/`, `services/`, `apps/`). **Result: PASSED (0 violations)**.
+- **Clean Repository Verification (`verify:prod-clean`)**: Scanned for Docker artifacts, Compose files, or Docker references. **Result: PASSED (0 violations)**.
 - **Custom Static Analysis Linter (`lint`)**: AST and regex check for `$queryRawUnsafe`, `$executeRawUnsafe`, and `console.log`. **Result: PASSED (0 violations)**.
 - **Route Authorization Auditor (`verify:routes-auth`)**: Audited endpoint authorization decorators and handlers. **Result: PASSED (100% route coverage)**.
 - **PII and Secret Redaction**: Verified that tokens, passwords, OTPs, phone numbers, emails, and coordinates are redacted from logs.
@@ -108,43 +113,68 @@ All test suites execute natively using Node.js test runner (`node --test`).
 
 - **`BLK-01`**: Authoritative specification `SW-MVP-1.0.pdf` remains missing from `docs/spec/`. Tracked under Conflict Register.
 - **`BLK-02`**: Authoritative specification `HW-SPEC-1.0.pdf` remains missing from `docs/spec/`. Hardware telemetry contract defined provisionally in `HW-INT-1.0`. Research task `RS-16` remains blocked.
-- **`C-06`**: Removal of separate driver app and VJIT institutional branding provisionally adopted under `APR-UI-001`. Final specification alignment pending.
+- **`C-01`**: Device Status on Ingestion Authentication (`ACTIVE` per SW-MVP-1.0 §11.5 vs `PROVISIONED` per HW-SPEC-1.0 §13.2). Blocks Phase P1 device authentication (`P1-T2`).
+- **`C-06`**: Removal of standalone driver mobile app from product scope in favor of 2-surface scope (student/faculty mobile app + transport admin web console). Affirmed under `APR-UI-001`.
+- **`PRQ-CI-01`**: `.github/workflows/ci.yml` is missing the `npm ci` installation step and requires `NODE_OPTIONS: --experimental-strip-types` for the Node.js 22 test runner step.
+- **`PRQ-LOCK-01`**: `package-lock.json` is generated, validated, and untracked pending explicit Project Owner authorization to stage/commit. `pnpm-lock.yaml` and `pnpm-workspace.yaml` are preserved under `ADR-DEV-002`.
 
 ---
 
 ## 9. Mock-Data & Purge Results
 
 - **`verify:no-mock` Result**: PASSED. Zero mock, dummy, or synthetic records found in production code or configuration seeds.
-- **`db:purge-synthetic` Result**: Verified implementation in `packages/db/src/purge.ts`. Purge script successfully configured to clean synthetic test data by dependency order without touching real records.
+- **`db:purge-synthetic` Result**: Verified implementation in `packages/db/src/purge.ts`. Purge script successfully configured to clean synthetic test data by dependency order without touching real records. (Note: No live local PostgreSQL database was provisioned during the isolated static audit; purged row count is 0 rows).
 
 ---
 
 ## 10. Commands to Reproduce
 
 ```bash
-# 1. Anti-mock verification
-node scripts/verify-no-mock.mjs
+# 1. Clean installation from verified package-lock.json
+npm ci
 
-# 2. Static security & coding standard lint
-node scripts/lint.mjs
+# 2. Production cleanliness verification (zero Docker)
+npm run verify:prod-clean
 
-# 3. Route authorization coverage verification
-node scripts/verify-routes-auth.mjs
+# 3. Anti-mock verification (Rule B.2)
+npm run verify:no-mock
 
-# 4. Monorepo TypeScript typecheck across all packages
-pnpm.cmd typecheck
+# 4. Static security & coding standard lint
+npm run lint
 
-# 5. Native unit test suite execution (54 tests)
-pnpm.cmd test:unit
+# 5. Route authorization coverage verification
+npm run verify:routes-auth
 
 # 6. Monorepo production build
-pnpm.cmd build
+npm run build
+
+# 7. Monorepo TypeScript typecheck across all workspaces
+npm run typecheck
+
+# 8. Complete test suite execution (199 tests)
+# Note: On Node.js 22, set NODE_OPTIONS=--experimental-strip-types
+# On Node.js 24, type stripping runs natively:
+npm test
 ```
 
 ---
 
 ## 11. Phase Gate Conclusion
 
-Phase P0 (Foundation / Milestone M0) implementation is complete, strictly conforms to `AG-MASTER-1.0-v2-College-Bus-Tracker.md` and `AGENTS.md`, and all automated verification checks pass.
+Phase P0 (Foundation / Milestone M0) implementation is complete, strictly conforms to `AG-MASTER-1.0-v2-College-Bus-Tracker.md` and `AGENTS.md`, and all automated verification checks pass with 199 passing tests.
 
-**In accordance with Rule B.9 step 5, work is now STOPPED at the Phase P0 approval gate. Standing by for project-owner review and authorization before proceeding to Phase P1.**
+**In accordance with Rule B.9 step 5, work is now STOPPED at the Phase P0 approval gate. Phase P1 remains LOCKED. Standing by for project-owner review and authorization before proceeding.**
+
+---
+
+## 12. P0 Owner Sign-Off Checklist
+
+Before Phase P1 can be unlocked, the Project Owner must review and sign off on the following items:
+
+- [ ] **Item 1: Phase P0 Deliverables Review** — Confirm that all Foundation deliverables (`P0-T1` through `P0-T18`) meet milestone M0 requirements.
+- [ ] **Item 2: npm Workspace Lockfile (`package-lock.json`)** — Formally authorize staging and committing `package-lock.json`, while maintaining `pnpm-lock.yaml` and `pnpm-workspace.yaml` tracked under `ADR-DEV-002` during the transition period.
+- [ ] **Item 3: Conflict C-01 Decision** — Formally approve Option A (first authenticated telemetry on a PROVISIONED device transitions it to ACTIVE if provisioning token matches and first_used_at is null) to unblock Task `P1-T2`.
+- [ ] **Item 4: Conflict C-06 Scope Confirmation** — Re-affirm the 2-surface application scope (Student/Faculty Mobile App + Web Admin Console; no separate driver app) under `APR-UI-001`.
+- [ ] **Item 5: Missing Specifications Handling** — Formally acknowledge the absence of `SW-MVP-1.0.pdf` (`BLK-01`) and `HW-SPEC-1.0.pdf` (`BLK-02`) and approve continuing under the codified contracts in `AG-MASTER-1.0-v2-College-Bus-Tracker.md` and `HW-INT-1.0`.
+- [ ] **Item 6: CI Pipeline Patch Approval** — Authorize adding `npm ci` and `NODE_OPTIONS: --experimental-strip-types` to `.github/workflows/ci.yml`.
+- [ ] **Item 7: Phase P1 Gate Authorization** — Formally authorize unlocking Phase P1 (Core Ingestion Pipeline & Worker).

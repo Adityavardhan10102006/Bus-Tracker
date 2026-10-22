@@ -32,6 +32,9 @@ export const deviceRecordSchema = z.object({
   firmware_version: z.string().regex(/^\d+\.\d+\.\d+$/),
   first_used_at: z.string().datetime({ offset: true }).nullable(),
   created_at: z.string().datetime({ offset: true }),
+  last_reported_at: z.string().datetime({ offset: true }).nullable().optional(),
+  connectivity_status: z.enum(['ONLINE', 'STOPPED_REPORTING', 'STANDBY']).optional(),
+  reporting_age_seconds: z.number().nullable().optional(),
 });
 export type DeviceRecord = z.infer<typeof deviceRecordSchema>;
 

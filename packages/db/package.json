@@ -14,8 +14,8 @@
   },
   "dependencies": {
     "@prisma/client": "^6.4.1",
-    "@vjit/config": "workspace:*",
-    "@vjit/logger": "workspace:*"
+    "@vjit/config": "*",
+    "@vjit/logger": "*"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
