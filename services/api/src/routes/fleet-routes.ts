@@ -612,6 +612,13 @@ export async function handleFleetApiRoutes(
     return true;
   }
 
+  if (method === 'POST' && pathname === '/api/v1/demo/reset') {
+    const result = fleetDataStore.resetDemo();
+    logger.info('Demo simulation reset to initial state', { stepIndex: result.state.stepIndex });
+    sendJsonResponse(res, 200, { success: true, ...result, request_id: requestId }, requestId);
+    return true;
+  }
+
   // 8. Attendance & Boarding Logs (Spec 18 & ADM-08)
   if (method === 'GET' && pathname === '/api/v1/attendance') {
     const tripType = url.searchParams.get('trip_type') ?? undefined;

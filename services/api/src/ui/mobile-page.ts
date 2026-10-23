@@ -1313,7 +1313,7 @@ export function renderMobileHtml(): string {
               <img src="/assets/vjit-logo.png" alt="VJIT" style="height:26px; background:white; padding:1px 4px; border-radius:3px;">
               <span style="font-family:'Outfit'; font-size:13px; font-weight:700; letter-spacing:0.02em;">VJIT TRANSPORT CARD</span>
             </div>
-            <span style="background:#16A34A; color:white; font-size:10px; font-weight:700; padding:2px 8px; border-radius:12px; text-transform:uppercase;">VALID &bull; 2026-27</span>
+            <span id="pass-validity-badge" style="background:#16A34A; color:white; font-size:10px; font-weight:700; padding:2px 8px; border-radius:12px; text-transform:uppercase;">VALID &bull; 2026-27</span>
           </div>
 
           <div style="font-size:11px; text-transform:uppercase; color:#93C5FD; font-weight:600;">Pass Holder</div>
@@ -1332,10 +1332,19 @@ export function renderMobileHtml(): string {
           </div>
 
           <!-- Cryptographic Rotating QR Pass (HMAC-SHA256) -->
-          <div style="margin-top:16px; background:white; border-radius:8px; padding:12px; display:flex; flex-direction:column; align-items:center;">
-            <div style="letter-spacing:4px; font-family:monospace; font-size:20px; color:#0F172A; font-weight:900;">|| | |||| | |||||| || |</div>
+          <div style="margin-top:16px; background:white; border-radius:8px; padding:12px; display:flex; flex-direction:column; align-items:center; position:relative; overflow:hidden;" id="pass-qr-container">
+            <div style="letter-spacing:4px; font-family:monospace; font-size:20px; color:#0F172A; font-weight:900;" id="pass-barcode-text">|| | |||| | |||||| || |</div>
             <div style="font-size:10px; color:#64748B; margin-top:4px; font-family:monospace;" id="pass-token-label">VJIT-PASS-2026-21B01A0501</div>
+            <div id="pass-expired-watermark" style="display:none; position:absolute; top:0; left:0; right:0; bottom:0; background:rgba(220, 38, 38, 0.92); color:white; font-weight:800; font-size:12px; align-items:center; justify-content:center; letter-spacing:1px; border-radius:8px; z-index:10; text-align:center; padding:4px;">
+              EXPIRED &bull; BOARDING SUSPENDED
+            </div>
           </div>
+        </div>
+
+        <!-- Pass Validity Feedback Alert (When Expired/Invalid) -->
+        <div id="pass-invalid-feedback" style="display:none; background:#FEF2F2; border:1px solid #FCA5A5; color:#991B1B; padding:12px 14px; border-radius:10px; margin-bottom:16px; font-size:12.5px;">
+          <div style="font-weight:700; margin-bottom:2px;">⚠️ Transport Pass Expired / Fee Due</div>
+          <div style="line-height:1.4;">Your college transport pass has expired or transport fee for semester 2026-27 is unpaid. Boarding authorization is temporarily suspended. Please visit the VJIT Central Transport Desk (Room #102, Ground Floor) to clear dues and revalidate your pass.</div>
         </div>
 
         <!-- Identity & Access Control Card -->
@@ -1350,12 +1359,15 @@ export function renderMobileHtml(): string {
             Current Role: <strong id="settings-user-role">Student (STU)</strong><br>
             Security Mechanism: <strong>Bearer JWT Token (Cryptographically Signed)</strong>
           </div>
-          <div style="display:flex; gap:8px;">
-            <button id="btn-settings-switch-role" style="flex:1; background:var(--brand-navy); color:white; border:none; padding:10px; border-radius:8px; font-weight:600; font-size:12px; cursor:pointer;">
+          <div style="display:flex; flex-wrap:wrap; gap:8px;">
+            <button id="btn-settings-switch-role" style="flex:1; min-width:140px; background:var(--brand-navy); color:white; border:none; padding:10px; border-radius:8px; font-weight:600; font-size:12px; cursor:pointer;">
               Switch Demo Persona &rarr;
             </button>
+            <button id="btn-toggle-pass-validity" style="background:var(--canvas-light); color:var(--text-secondary); border:1px solid var(--border-strong); padding:10px 12px; border-radius:8px; font-weight:600; font-size:12px; cursor:pointer;" title="Simulate expired pass to test student feedback">
+              Simulate Expired Pass
+            </button>
             <button id="btn-test-expired-session" style="background:var(--canvas-light); color:var(--text-secondary); border:1px solid var(--border-strong); padding:10px 12px; border-radius:8px; font-weight:600; font-size:12px; cursor:pointer;" title="Simulate expired session to test auth error handling">
-              Simulate Expired Session
+              Simulate 401 Session
             </button>
           </div>
         </div>
@@ -1427,6 +1439,7 @@ export function renderMobileHtml(): string {
     <div class="demo-floating-bar">
       <span>Simulation Engine: <strong id="demo-step-indicator">Step #3</strong></span>
       <button class="btn-step-demo" id="btn-step-sim">Advance 10s &rarr;</button>
+      <button class="btn-step-demo" id="btn-reset-sim" style="background:#475569; margin-left:4px;">Reset</button>
     </div>
 
     <!-- Bottom Navigation Tab Bar -->
@@ -2060,7 +2073,8 @@ export function renderMobileHtml(): string {
         }
 
         const stops = route.stops || [];
-        const stopsChanged = appState.currentRenderedRouteId !== route.id || appState.lastRenderedStopCount !== stops.length;
+        const currentStopsHash = route.id + ':' + (route.updated_at || '') + ':' + (route.geometry_source || '') + ':' + stops.map(s => s.id + ':' + s.sequence + ':' + s.latitude + ':' + s.longitude).join(',');
+        const stopsChanged = appState.currentRenderedRouteHash !== currentStopsHash;
 
         if (stopsChanged || !appState.routePolyline) {
           if (appState.routePolyline) {
@@ -2104,6 +2118,7 @@ export function renderMobileHtml(): string {
             appState.stopMarkers.push(marker);
           });
 
+          appState.currentRenderedRouteHash = currentStopsHash;
           appState.currentRenderedRouteId = route.id;
           appState.lastRenderedStopCount = stops.length;
 
@@ -2493,6 +2508,34 @@ export function renderMobileHtml(): string {
       await loadAllData();
     };
 
+    let isPassSimulatedExpired = false;
+    const btnTogglePass = document.getElementById('btn-toggle-pass-validity');
+    if (btnTogglePass) {
+      btnTogglePass.onclick = () => {
+        isPassSimulatedExpired = !isPassSimulatedExpired;
+        const badge = document.getElementById('pass-validity-badge');
+        const watermark = document.getElementById('pass-expired-watermark');
+        const alertBox = document.getElementById('pass-invalid-feedback');
+        if (isPassSimulatedExpired) {
+          if (badge) {
+            badge.style.background = '#DC2626';
+            badge.textContent = 'EXPIRED \u2022 FEE DUE';
+          }
+          if (watermark) watermark.style.display = 'flex';
+          if (alertBox) alertBox.style.display = 'block';
+          btnTogglePass.textContent = 'Restore Valid Pass';
+        } else {
+          if (badge) {
+            badge.style.background = '#16A34A';
+            badge.textContent = 'VALID \u2022 2026-27';
+          }
+          if (watermark) watermark.style.display = 'none';
+          if (alertBox) alertBox.style.display = 'none';
+          btnTogglePass.textContent = 'Simulate Expired Pass';
+        }
+      };
+    }
+
     document.getElementById('btn-settings-switch-role').onclick = () => {
       roleModal.classList.add('open');
     };
@@ -2576,6 +2619,19 @@ export function renderMobileHtml(): string {
         }
       } catch (err) {}
     };
+
+    const btnResetSim = document.getElementById('btn-reset-sim');
+    if (btnResetSim) {
+      btnResetSim.onclick = async () => {
+        try {
+          const res = await fetch('/api/v1/demo/reset', { method: 'POST' }).then(r => r.json());
+          if (res.success) {
+            document.getElementById('demo-step-indicator').textContent = 'Step #' + res.state.stepIndex;
+            await loadAllData();
+          }
+        } catch (err) {}
+      };
+    }
 
     document.getElementById('btn-refresh-list').onclick = loadAllData;
 

@@ -8,7 +8,7 @@
 [![Node.js Version](https://img.shields.io/badge/Node.js-v22_LTS-339933?style=for-the-badge&logo=nodedotjs&logoColor=white)](https://nodejs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.x_Strict-3178C6?style=for-the-badge&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16_+_PostGIS_3.4-4169E1?style=for-the-badge&logo=postgresql&logoColor=white)](https://www.postgresql.org/)
-[![Tests Passing](https://img.shields.io/badge/Tests-239_Passing-success?style=for-the-badge&logo=checkmarx&logoColor=white)](#automated-verification--testing)
+[![Tests Passing](https://img.shields.io/badge/Tests-244_Passing-success?style=for-the-badge&logo=checkmarx&logoColor=white)](#automated-verification--testing)
 [![Zero Mocks](https://img.shields.io/badge/Rule_B.2-Zero_Mock_Clean-emerald?style=for-the-badge&logo=shield&logoColor=white)](#strict-anti-mock-policy-rule-b2)
 [![Pure Node.js](https://img.shields.io/badge/Workflow-Pure_Node.js_%2F_Zero_Docker-blueviolet?style=for-the-badge&logo=npm&logoColor=white)](#direct-local-nodejs-workflow)
 
@@ -243,7 +243,7 @@ Strict TypeScript Typechecks .........  17 of  17 Packages Clean
 | :--- | :--- | :--- |
 | `npm run build` | `turbo run build` | Compiles all TypeScript packages via Turborepo. |
 | `npm start` | `node services/api/dist/main.js` | Launches the unified API, Web UI, and Ingestion server. |
-| `npm test` | `npm run test:unit && npm run test:contract` | Executes all 203 unit, contract, and integration tests. |
+| `npm test` | `npm run test:unit && npm run test:contract` | Executes all 244 unit, contract, and integration tests. |
 | `npm run typecheck` | `turbo run typecheck` | Validates strict TypeScript types across the monorepo. |
 | `npm run lint` | `node ./scripts/lint.mjs` | Banned pattern audit (`$queryRawUnsafe`, `console.log`). |
 | `npm run verify:no-mock` | `node ./scripts/verify-no-mock.mjs` | Rule B.2 gate: scans for mock or dummy strings in production code. |

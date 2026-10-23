@@ -969,6 +969,7 @@ export function renderAdminHtml(): string {
     </div>
     <div class="sim-btn-group">
       <button class="btn-sim-action btn-sim-primary" id="btn-admin-step-sim">Step 10s Forward &rarr;</button>
+      <button class="btn-sim-action" id="btn-admin-reset-sim">Reset Simulation</button>
       <button class="btn-sim-action" id="btn-admin-toggle-sim">Toggle Simulation</button>
     </div>
   </aside>
@@ -3431,6 +3432,20 @@ export function renderAdminHtml(): string {
         }
       } catch (e) {}
     };
+
+    const btnAdminReset = document.getElementById('btn-admin-reset-sim');
+    if (btnAdminReset) {
+      btnAdminReset.onclick = async () => {
+        try {
+          const res = await fetch('/api/v1/demo/reset', { method: 'POST' }).then(r => r.json());
+          if (res.success) {
+            document.getElementById('sim-step-text').textContent = 'Step #' + res.state.stepIndex;
+            showFeedback('Telemetry simulation reset to initial depot baseline.');
+            await loadAdminData();
+          }
+        } catch (e) {}
+      };
+    }
 
     // Role switcher
     document.getElementById('admin-role-select').onchange = async (e) => {

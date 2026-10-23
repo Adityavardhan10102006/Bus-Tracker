@@ -1630,6 +1630,18 @@ export class FleetDataStore
     };
   }
 
+  resetDemo(): { state: DemoSimulationState; snapshots: BusSnapshot[] } {
+    this.demoState.stepIndex = 0;
+    this.busProgress.set('00000000-0000-4000-8000-000000000001', 0);
+    this.busProgress.set('00000000-0000-4000-8000-000000000002', 0);
+    this.busProgress.set('00000000-0000-4000-8000-000000000003', 0);
+    this.busProgress.set('00000000-0000-4000-8000-000000000004', 0);
+    return {
+      state: this.getDemoState(),
+      snapshots: this.getSnapshots(),
+    };
+  }
+
   // --- Implement IngestionDataStore ---
 
   async getDevice(deviceId: string) {
