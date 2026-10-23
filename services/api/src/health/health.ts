@@ -27,6 +27,42 @@ export function getLivenessStatus(): HealthStatus {
   };
 }
 
+export async function checkDatabaseConnection(databaseUrl?: string): Promise<boolean> {
+  const urlString = databaseUrl || process.env.DATABASE_URL;
+  if (!urlString) return false;
+
+  try {
+    const url = new URL(urlString);
+    const host = url.hostname || 'localhost';
+    const port = Number(url.port) || 5432;
+
+    const net = await import('node:net');
+    return await new Promise<boolean>((resolve) => {
+      const socket = new net.Socket();
+      socket.setTimeout(1500);
+
+      socket.on('connect', () => {
+        socket.destroy();
+        resolve(true);
+      });
+
+      socket.on('timeout', () => {
+        socket.destroy();
+        resolve(false);
+      });
+
+      socket.on('error', () => {
+        socket.destroy();
+        resolve(false);
+      });
+
+      socket.connect(port, host);
+    });
+  } catch {
+    return false;
+  }
+}
+
 export async function getReadinessStatus(
   checkDatabase?: () => Promise<boolean>,
 ): Promise<ReadinessStatus> {

@@ -1,19 +1,21 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { fleetDataStore } from '../store/fleet-data-store.js';
 import { sendErrorResponse } from '../middleware/security.js';
+import { checkRole, ROLE_GROUPS } from '../middleware/auth.js';
 import { logger } from '@vjit/logger';
 import {
   type UserRole,
+  type UserProfile,
   createBusInputSchema,
   updateBusInputSchema,
   assignRouteInputSchema,
   createDeviceInputSchema,
   updateDeviceInputSchema,
 } from '@vjit/contracts';
-import { validateRouteStops, calculateRouteGeometry } from '@vjit/domain';
+import { validateRouteStops, calculateRouteGeometry, maskDeviceRecord } from '@vjit/domain';
 
 /**
- * Parses JSON body from incoming request safely
+ * Parses JSON body from incoming request safely with byte limit guard
  */
 export async function parseJsonBody<T = unknown>(req: IncomingMessage, maxBytes = 65536): Promise<T> {
   return new Promise((resolve, reject) => {
@@ -40,7 +42,7 @@ export async function parseJsonBody<T = unknown>(req: IncomingMessage, maxBytes 
   });
 }
 
-function sendJsonResponse(res: ServerResponse, statusCode: number, data: unknown, requestId: string): void {
+export function sendJsonResponse(res: ServerResponse, statusCode: number, data: unknown, requestId: string): void {
   res.writeHead(statusCode, {
     'Content-Type': 'application/json; charset=utf-8',
     'X-Request-Id': requestId,
@@ -49,47 +51,80 @@ function sendJsonResponse(res: ServerResponse, statusCode: number, data: unknown
 }
 
 /**
- * Dispatches fleet, snapshot, and management API requests
+ * Verifies if simulator and demo routes are permitted per Rule R-M5:
+ * "The simulator refuses to run unless APP_ENV is local or staging, and only against hostnames in SIMULATOR_ALLOWED_HOSTS."
  */
-export async function handleFleetApiRoutes(
-  req: IncomingMessage,
-  res: ServerResponse,
-  url: URL,
-  requestId: string,
-): Promise<boolean> {
-  const pathname = url.pathname;
-  const method = req.method?.toUpperCase() ?? 'GET';
+export function isSimulatorAllowed(req: IncomingMessage): { allowed: boolean; reason?: string } {
+  const appEnv = process.env.APP_ENV ?? 'local';
+  const nodeEnv = process.env.NODE_ENV ?? 'development';
+  if (appEnv === 'production' || nodeEnv === 'production' || !['local', 'staging'].includes(appEnv)) {
+    return {
+      allowed: false,
+      reason: 'Simulation endpoints (/api/v1/demo/*) are strictly forbidden in production (Rule R-M5).',
+    };
+  }
+  const rawAllowedHosts = process.env.SIMULATOR_ALLOWED_HOSTS || 'localhost,127.0.0.1';
+  const allowedHosts = rawAllowedHosts
+    .split(',')
+    .map(h => h.trim().toLowerCase())
+    .filter(Boolean);
+  const hostHeader = (req.headers.host || '').split(':')[0]?.toLowerCase() ?? '';
+  if (hostHeader && !allowedHosts.includes(hostHeader)) {
+    return {
+      allowed: false,
+      reason: `Simulator request from host "${hostHeader}" rejected. Host is not in SIMULATOR_ALLOWED_HOSTS (Rule R-M5).`,
+    };
+  }
+  return { allowed: true };
+}
 
-  // 1. GET /api/v1/snapshot: Active buses with coordinates & freshness
+// ============================================================================
+// Domain Dispatchers
+// ============================================================================
+
+/**
+ * Handles /api/v1/snapshot: Active buses with coordinates & freshness
+ */
+async function handleSnapshotEndpoints(
+  _req: IncomingMessage,
+  res: ServerResponse,
+  pathname: string,
+  method: string,
+  requestId: string,
+  url: URL,
+): Promise<boolean> {
   if (method === 'GET' && pathname === '/api/v1/snapshot') {
     const routeId = url.searchParams.get('route_id') ?? undefined;
     const buses = fleetDataStore.getSnapshots(routeId);
     sendJsonResponse(res, 200, { buses, total: buses.length, request_id: requestId }, requestId);
     return true;
   }
+  return false;
+}
 
-  // 2. Routes endpoints
+/**
+ * Handles /api/v1/routes endpoints: Listing, details, stop management, and road geometry
+ */
+async function handleRouteEndpoints(
+  req: IncomingMessage,
+  res: ServerResponse,
+  pathname: string,
+  method: string,
+  requestId: string,
+  user: UserProfile,
+): Promise<boolean> {
+  if (!pathname.startsWith('/api/v1/routes')) {
+    return false;
+  }
+
+  // GET /api/v1/routes
   if (method === 'GET' && pathname === '/api/v1/routes') {
     const routes = fleetDataStore.getRoutes();
     sendJsonResponse(res, 200, { routes, total: routes.length, request_id: requestId }, requestId);
     return true;
   }
 
-  // GET /api/v1/routes/:id
-  if (method === 'GET' && pathname.startsWith('/api/v1/routes/')) {
-    const routeId = pathname.replace('/api/v1/routes/', '').split('/')[0];
-    if (routeId) {
-      const route = fleetDataStore.getRouteById(routeId);
-      if (!route) {
-        sendErrorResponse(res, 404, 'NOT_FOUND', `Route ${routeId} not found.`, requestId);
-        return true;
-      }
-      sendJsonResponse(res, 200, { route, request_id: requestId }, requestId);
-      return true;
-    }
-  }
-
-  // POST /api/v1/routes/preview-geometry: Preview road-following geometry without persisting
+  // POST /api/v1/routes/preview-geometry
   if (method === 'POST' && pathname === '/api/v1/routes/preview-geometry') {
     try {
       const body = await parseJsonBody<{
@@ -129,11 +164,23 @@ export async function handleFleetApiRoutes(
     }
   }
 
-  // POST /api/v1/routes: Create new route with stops & geometry
+  // GET /api/v1/routes/:id
+  if (method === 'GET' && pathname.startsWith('/api/v1/routes/')) {
+    const routeId = pathname.replace('/api/v1/routes/', '').split('/')[0];
+    if (routeId) {
+      const route = fleetDataStore.getRouteById(routeId);
+      if (!route) {
+        sendErrorResponse(res, 404, 'NOT_FOUND', `Route ${routeId} not found.`, requestId);
+        return true;
+      }
+      sendJsonResponse(res, 200, { route, request_id: requestId }, requestId);
+      return true;
+    }
+  }
+
+  // POST /api/v1/routes: Create new route
   if (method === 'POST' && pathname === '/api/v1/routes') {
-    const user = fleetDataStore.getCurrentUser();
-    if (user.role !== 'COR' && user.role !== 'SAD') {
-      sendErrorResponse(res, 403, 'FORBIDDEN', 'Role Unauthorized: Only Coordinators and Super Admins can create transit routes.', requestId);
+    if (!checkRole(user.role, ROLE_GROUPS.COORDINATORS_AND_ADMINS, res, requestId, 'Only Coordinators and Super Admins can create transit routes')) {
       return true;
     }
 
@@ -207,11 +254,9 @@ export async function handleFleetApiRoutes(
     }
   }
 
-  // PUT /api/v1/routes/:id: Update route with stops & geometry
+  // PUT /api/v1/routes/:id: Update route
   if ((method === 'PUT' || method === 'PATCH') && pathname.startsWith('/api/v1/routes/') && !pathname.includes('/stops') && !pathname.includes('/preview-geometry')) {
-    const user = fleetDataStore.getCurrentUser();
-    if (user.role !== 'COR' && user.role !== 'SAD') {
-      sendErrorResponse(res, 403, 'FORBIDDEN', 'Role Unauthorized: Only Coordinators and Super Admins can modify transit routes.', requestId);
+    if (!checkRole(user.role, ROLE_GROUPS.COORDINATORS_AND_ADMINS, res, requestId, 'Only Coordinators and Super Admins can modify transit routes')) {
       return true;
     }
 
@@ -292,9 +337,7 @@ export async function handleFleetApiRoutes(
 
   // DELETE /api/v1/routes/:id: Delete route
   if (method === 'DELETE' && pathname.startsWith('/api/v1/routes/') && !pathname.includes('/stops') && !pathname.includes('/preview-geometry')) {
-    const user = fleetDataStore.getCurrentUser();
-    if (user.role !== 'COR' && user.role !== 'SAD') {
-      sendErrorResponse(res, 403, 'FORBIDDEN', 'Role Unauthorized: Only Coordinators and Super Admins can remove routes.', requestId);
+    if (!checkRole(user.role, ROLE_GROUPS.COORDINATORS_AND_ADMINS, res, requestId, 'Only Coordinators and Super Admins can remove routes')) {
       return true;
     }
     const routeId = pathname.replace('/api/v1/routes/', '');
@@ -321,9 +364,7 @@ export async function handleFleetApiRoutes(
 
   // POST /api/v1/routes/:id/stops: Add stop
   if (method === 'POST' && pathname.includes('/api/v1/routes/') && pathname.endsWith('/stops')) {
-    const user = fleetDataStore.getCurrentUser();
-    if (user.role !== 'COR' && user.role !== 'SAD') {
-      sendErrorResponse(res, 403, 'FORBIDDEN', 'Role Unauthorized: Only Coordinators and Super Admins can add route stops.', requestId);
+    if (!checkRole(user.role, ROLE_GROUPS.COORDINATORS_AND_ADMINS, res, requestId, 'Only Coordinators and Super Admins can add route stops')) {
       return true;
     }
     const parts = pathname.split('/');
@@ -350,9 +391,7 @@ export async function handleFleetApiRoutes(
 
   // DELETE /api/v1/routes/:id/stops/:stopId
   if (method === 'DELETE' && pathname.includes('/api/v1/routes/') && pathname.includes('/stops/')) {
-    const user = fleetDataStore.getCurrentUser();
-    if (user.role !== 'COR' && user.role !== 'SAD') {
-      sendErrorResponse(res, 403, 'FORBIDDEN', 'Role Unauthorized: Only Coordinators and Super Admins can remove route stops.', requestId);
+    if (!checkRole(user.role, ROLE_GROUPS.COORDINATORS_AND_ADMINS, res, requestId, 'Only Coordinators and Super Admins can remove route stops')) {
       return true;
     }
     const parts = pathname.split('/');
@@ -368,8 +407,29 @@ export async function handleFleetApiRoutes(
     return true;
   }
 
-  // 3. Buses endpoints
+  return false;
+}
+
+/**
+ * Handles /api/v1/buses endpoints: Fleet inventory, registration, route assignments, updates, deactivations
+ */
+async function handleBusEndpoints(
+  req: IncomingMessage,
+  res: ServerResponse,
+  pathname: string,
+  method: string,
+  requestId: string,
+  user: UserProfile,
+): Promise<boolean> {
+  if (!pathname.startsWith('/api/v1/buses')) {
+    return false;
+  }
+
+  // GET /api/v1/buses: Statutory fleet records restricted to staff
   if (method === 'GET' && pathname === '/api/v1/buses') {
+    if (!checkRole(user.role, ROLE_GROUPS.STAFF_MEMBERS, res, requestId, 'Access to statutory bus records is restricted to transport staff')) {
+      return true;
+    }
     const buses = fleetDataStore.getBuses();
     sendJsonResponse(res, 200, { buses, total: buses.length, request_id: requestId }, requestId);
     return true;
@@ -377,9 +437,7 @@ export async function handleFleetApiRoutes(
 
   // POST /api/v1/buses: Create bus
   if (method === 'POST' && pathname === '/api/v1/buses') {
-    const user = fleetDataStore.getCurrentUser();
-    if (user.role !== 'COR' && user.role !== 'SAD') {
-      sendErrorResponse(res, 403, 'FORBIDDEN', 'Role Unauthorized: Only Coordinators and Super Admins can register buses.', requestId);
+    if (!checkRole(user.role, ROLE_GROUPS.COORDINATORS_AND_ADMINS, res, requestId, 'Only Coordinators and Super Admins can register buses')) {
       return true;
     }
     try {
@@ -410,13 +468,11 @@ export async function handleFleetApiRoutes(
 
   // POST /api/v1/buses/:id/assign-route: Associate bus to saved transit route
   if (method === 'POST' && pathname.includes('/api/v1/buses/') && pathname.endsWith('/assign-route')) {
-    const parts = pathname.split('/');
-    const busId = parts[4] ?? '';
-    const user = fleetDataStore.getCurrentUser();
-    if (user.role !== 'COR' && user.role !== 'SAD') {
-      sendErrorResponse(res, 403, 'FORBIDDEN', 'Role Unauthorized: Only Coordinators and Super Admins can assign routes to buses.', requestId);
+    if (!checkRole(user.role, ROLE_GROUPS.COORDINATORS_AND_ADMINS, res, requestId, 'Only Coordinators and Super Admins can assign routes to buses')) {
       return true;
     }
+    const parts = pathname.split('/');
+    const busId = parts[4] ?? '';
     try {
       const rawBody = await parseJsonBody<unknown>(req);
       const parseResult = assignRouteInputSchema.safeParse(rawBody);
@@ -447,9 +503,7 @@ export async function handleFleetApiRoutes(
 
   // PUT /api/v1/buses/:id: Update bus
   if ((method === 'PUT' || method === 'PATCH') && pathname.startsWith('/api/v1/buses/') && !pathname.endsWith('/assign-route')) {
-    const user = fleetDataStore.getCurrentUser();
-    if (user.role !== 'COR' && user.role !== 'SAD') {
-      sendErrorResponse(res, 403, 'FORBIDDEN', 'Role Unauthorized: Only Coordinators and Super Admins can update buses.', requestId);
+    if (!checkRole(user.role, ROLE_GROUPS.COORDINATORS_AND_ADMINS, res, requestId, 'Only Coordinators and Super Admins can update buses')) {
       return true;
     }
     const busId = pathname.replace('/api/v1/buses/', '');
@@ -482,9 +536,7 @@ export async function handleFleetApiRoutes(
 
   // DELETE /api/v1/buses/:id: Deactivate bus
   if (method === 'DELETE' && pathname.startsWith('/api/v1/buses/')) {
-    const user = fleetDataStore.getCurrentUser();
-    if (user.role !== 'COR' && user.role !== 'SAD') {
-      sendErrorResponse(res, 403, 'FORBIDDEN', 'Role Unauthorized: Only Coordinators and Super Admins can deactivate buses.', requestId);
+    if (!checkRole(user.role, ROLE_GROUPS.COORDINATORS_AND_ADMINS, res, requestId, 'Only Coordinators and Super Admins can deactivate buses')) {
       return true;
     }
     const busId = pathname.replace('/api/v1/buses/', '');
@@ -498,9 +550,31 @@ export async function handleFleetApiRoutes(
     return true;
   }
 
-  // 4. GPS Tracker Devices & Linking
+  return false;
+}
+
+/**
+ * Handles /api/v1/devices endpoints: Device inventory, registration, bus association, lifecycle status
+ */
+async function handleDeviceEndpoints(
+  req: IncomingMessage,
+  res: ServerResponse,
+  pathname: string,
+  method: string,
+  requestId: string,
+  user: UserProfile,
+): Promise<boolean> {
+  if (!pathname.startsWith('/api/v1/devices')) {
+    return false;
+  }
+
+  // GET /api/v1/devices: Hardware inventory restricted to device managers with IMEI/ICCID masking
   if (method === 'GET' && pathname === '/api/v1/devices') {
-    const devices = fleetDataStore.getDevices();
+    if (!checkRole(user.role, ROLE_GROUPS.DEVICE_MANAGERS, res, requestId, 'Access to GPS device inventory is restricted to hardware and transport staff')) {
+      return true;
+    }
+    const rawDevices = fleetDataStore.getDevices();
+    const devices = rawDevices.map(d => maskDeviceRecord(d, user.role));
     const links = fleetDataStore.getLinks();
     sendJsonResponse(res, 200, { devices, links, total: devices.length, request_id: requestId }, requestId);
     return true;
@@ -508,10 +582,7 @@ export async function handleFleetApiRoutes(
 
   // POST /api/v1/devices: Register new hardware device
   if (method === 'POST' && pathname === '/api/v1/devices') {
-    const user = fleetDataStore.getCurrentUser();
-    // Technicians (TEC), Coordinators (COR), and Super Admins (SAD) can register devices
-    if (user.role !== 'COR' && user.role !== 'TEC' && user.role !== 'SAD') {
-      sendErrorResponse(res, 403, 'FORBIDDEN', 'Role Unauthorized: Only Coordinators, Technicians, and Super Admins can register GPS devices.', requestId);
+    if (!checkRole(user.role, ROLE_GROUPS.DEVICE_MANAGERS, res, requestId, 'Only Coordinators, Technicians, and Super Admins can register GPS devices')) {
       return true;
     }
     try {
@@ -533,7 +604,17 @@ export async function handleFleetApiRoutes(
         return true;
       }
       logger.info('Device registered in registry', { deviceId: result.device?.device_id, actor: user.email });
-      sendJsonResponse(res, 201, { success: true, device: result.device, request_id: requestId }, requestId);
+      sendJsonResponse(
+        res,
+        201,
+        {
+          success: true,
+          device: result.device ? maskDeviceRecord(result.device, user.role) : undefined,
+          token: result.plaintextToken,
+          request_id: requestId,
+        },
+        requestId,
+      );
       return true;
     } catch (e) {
       sendErrorResponse(res, 400, 'BAD_REQUEST', (e as Error).message, requestId);
@@ -544,9 +625,7 @@ export async function handleFleetApiRoutes(
   // PUT/PATCH /api/v1/devices/:id: Update device details (model, nickname, firmware)
   if ((method === 'PUT' || method === 'PATCH') && pathname.startsWith('/api/v1/devices/') &&
       !pathname.endsWith('/link') && !pathname.endsWith('/unlink') && !pathname.endsWith('/status')) {
-    const user = fleetDataStore.getCurrentUser();
-    if (user.role !== 'COR' && user.role !== 'TEC' && user.role !== 'SAD') {
-      sendErrorResponse(res, 403, 'FORBIDDEN', 'Role Unauthorized: Only Coordinators, Technicians, and Super Admins can edit device details.', requestId);
+    if (!checkRole(user.role, ROLE_GROUPS.DEVICE_MANAGERS, res, requestId, 'Only Coordinators, Technicians, and Super Admins can edit device details')) {
       return true;
     }
     const deviceId = pathname.replace('/api/v1/devices/', '');
@@ -577,24 +656,13 @@ export async function handleFleetApiRoutes(
     }
   }
 
-  // POST /api/v1/devices/:id/link: Link device to bus
+  // POST /api/v1/devices/:id/link: Link device to bus (Rule E.6)
   if (method === 'POST' && pathname.includes('/api/v1/devices/') && pathname.endsWith('/link')) {
-    const parts = pathname.split('/');
-    const deviceId = parts[4] ?? '';
-    const user = fleetDataStore.getCurrentUser();
-
-    // Security Check: Rule E.6 - Only Coordinators and Super Admins can link devices!
-    if (user.role !== 'COR' && user.role !== 'SAD') {
-      sendErrorResponse(
-        res,
-        403,
-        'FORBIDDEN',
-        'Role Unauthorized: Only Transport Coordinators (COR) and Super Admins (SAD) can associate devices to buses (Rule E.6).',
-        requestId,
-      );
+    if (!checkRole(user.role, ROLE_GROUPS.COORDINATORS_AND_ADMINS, res, requestId, 'Only Transport Coordinators (COR) and Super Admins (SAD) can associate devices to buses (Rule E.6)')) {
       return true;
     }
-
+    const parts = pathname.split('/');
+    const deviceId = parts[4] ?? '';
     try {
       const body = await parseJsonBody<{ bus_id: string }>(req);
       if (!body.bus_id) {
@@ -615,24 +683,13 @@ export async function handleFleetApiRoutes(
     }
   }
 
-  // POST /api/v1/devices/:id/unlink: Unlink device from bus
+  // POST /api/v1/devices/:id/unlink: Unlink device from bus (Rule E.6)
   if (method === 'POST' && pathname.includes('/api/v1/devices/') && pathname.endsWith('/unlink')) {
-    const parts = pathname.split('/');
-    const deviceId = parts[4] ?? '';
-    const user = fleetDataStore.getCurrentUser();
-
-    // Security Check: Rule E.6 - Only Coordinators and Super Admins can modify device links!
-    if (user.role !== 'COR' && user.role !== 'SAD') {
-      sendErrorResponse(
-        res,
-        403,
-        'FORBIDDEN',
-        'Role Unauthorized: Only Transport Coordinators (COR) and Super Admins (SAD) can modify device associations (Rule E.6).',
-        requestId,
-      );
+    if (!checkRole(user.role, ROLE_GROUPS.COORDINATORS_AND_ADMINS, res, requestId, 'Only Transport Coordinators (COR) and Super Admins (SAD) can modify device associations (Rule E.6)')) {
       return true;
     }
-
+    const parts = pathname.split('/');
+    const deviceId = parts[4] ?? '';
     const result = fleetDataStore.unlinkDevice(deviceId, user.email);
     if (!result.success) {
       sendErrorResponse(res, 400, 'UNLINK_ERROR', result.error ?? 'Unlinking failed.', requestId);
@@ -643,24 +700,13 @@ export async function handleFleetApiRoutes(
     return true;
   }
 
-  // PATCH/POST /api/v1/devices/:id/status: Update device provisioning/revocation status
+  // PATCH/POST /api/v1/devices/:id/status: Update device lifecycle status (Rule E.6)
   if ((method === 'PATCH' || method === 'POST') && pathname.includes('/api/v1/devices/') && pathname.endsWith('/status')) {
-    const parts = pathname.split('/');
-    const deviceId = parts[4] ?? '';
-    const user = fleetDataStore.getCurrentUser();
-
-    // Security Check: Rule E.6 - Technicians and read-only roles cannot change device lifecycle status
-    if (user.role !== 'COR' && user.role !== 'SAD') {
-      sendErrorResponse(
-        res,
-        403,
-        'FORBIDDEN',
-        'Role Unauthorized: Only Transport Coordinators (COR) and Super Admins (SAD) can change device lifecycle status.',
-        requestId,
-      );
+    if (!checkRole(user.role, ROLE_GROUPS.COORDINATORS_AND_ADMINS, res, requestId, 'Only Transport Coordinators (COR) and Super Admins (SAD) can change device lifecycle status')) {
       return true;
     }
-
+    const parts = pathname.split('/');
+    const deviceId = parts[4] ?? '';
     try {
       const body = await parseJsonBody<{ status: 'ACTIVE' | 'PROVISIONED' | 'REVOKED' }>(req);
       if (!body.status || !['ACTIVE', 'PROVISIONED', 'REVOKED'].includes(body.status)) {
@@ -681,7 +727,25 @@ export async function handleFleetApiRoutes(
     }
   }
 
-  // 5. Service Alerts
+  return false;
+}
+
+/**
+ * Handles /api/v1/alerts: Broadcast announcements & disruption notices
+ */
+async function handleAlertEndpoints(
+  req: IncomingMessage,
+  res: ServerResponse,
+  pathname: string,
+  method: string,
+  requestId: string,
+  user: UserProfile,
+): Promise<boolean> {
+  if (!pathname.startsWith('/api/v1/alerts')) {
+    return false;
+  }
+
+  // GET /api/v1/alerts
   if (method === 'GET' && pathname === '/api/v1/alerts') {
     const alerts = fleetDataStore.getAlerts();
     sendJsonResponse(res, 200, { alerts, total: alerts.length, request_id: requestId }, requestId);
@@ -690,9 +754,7 @@ export async function handleFleetApiRoutes(
 
   // POST /api/v1/alerts: Create alert
   if (method === 'POST' && pathname === '/api/v1/alerts') {
-    const user = fleetDataStore.getCurrentUser();
-    if (user.role !== 'COR' && user.role !== 'SAD') {
-      sendErrorResponse(res, 403, 'FORBIDDEN', 'Role Unauthorized: Only Coordinators and Super Admins can publish service alerts.', requestId);
+    if (!checkRole(user.role, ROLE_GROUPS.COORDINATORS_AND_ADMINS, res, requestId, 'Only Coordinators and Super Admins can publish service alerts')) {
       return true;
     }
     try {
@@ -722,13 +784,27 @@ export async function handleFleetApiRoutes(
     }
   }
 
-  // 6. User Profile & Role Switcher
+  return false;
+}
+
+/**
+ * Handles /api/v1/me and /api/v1/auth/switch-role: User identity and role switching
+ */
+async function handleAuthAndProfileEndpoints(
+  req: IncomingMessage,
+  res: ServerResponse,
+  pathname: string,
+  method: string,
+  requestId: string,
+): Promise<boolean> {
+  // GET /api/v1/me
   if (method === 'GET' && pathname === '/api/v1/me') {
     const user = fleetDataStore.getCurrentUser();
     sendJsonResponse(res, 200, { user, request_id: requestId }, requestId);
     return true;
   }
 
+  // POST /api/v1/auth/switch-role
   if (method === 'POST' && pathname === '/api/v1/auth/switch-role') {
     try {
       const body = await parseJsonBody<{ role: UserRole }>(req);
@@ -746,7 +822,29 @@ export async function handleFleetApiRoutes(
     }
   }
 
-  // 7. Demo Simulation Engine
+  return false;
+}
+
+/**
+ * Handles /api/v1/demo/*: Simulation engine (controlled by Rule R-M5)
+ */
+async function handleDemoEndpoints(
+  req: IncomingMessage,
+  res: ServerResponse,
+  pathname: string,
+  method: string,
+  requestId: string,
+): Promise<boolean> {
+  if (!pathname.startsWith('/api/v1/demo/')) {
+    return false;
+  }
+
+  const simCheck = isSimulatorAllowed(req);
+  if (!simCheck.allowed) {
+    sendErrorResponse(res, 403, 'SIMULATOR_PROHIBITED', simCheck.reason!, requestId);
+    return true;
+  }
+
   if (method === 'GET' && pathname === '/api/v1/demo/state') {
     const state = fleetDataStore.getDemoState();
     sendJsonResponse(res, 200, { state, request_id: requestId }, requestId);
@@ -774,11 +872,28 @@ export async function handleFleetApiRoutes(
     return true;
   }
 
-  // 8. Attendance & Boarding Logs (Spec 18 & ADM-08)
+  return false;
+}
+
+/**
+ * Handles /api/v1/attendance: Boarding records & manual check-in (Spec 18 & ADM-08)
+ */
+async function handleAttendanceEndpoints(
+  req: IncomingMessage,
+  res: ServerResponse,
+  pathname: string,
+  method: string,
+  requestId: string,
+  user: UserProfile,
+  url: URL,
+): Promise<boolean> {
+  if (!pathname.startsWith('/api/v1/attendance')) {
+    return false;
+  }
+
+  // GET /api/v1/attendance
   if (method === 'GET' && pathname === '/api/v1/attendance') {
-    const user = fleetDataStore.getCurrentUser();
-    if (!['COR', 'SAD', 'MGT', 'SEC', 'FAC'].includes(user.role)) {
-      sendErrorResponse(res, 403, 'FORBIDDEN', 'Access to attendance logs is restricted to authorized staff.', requestId);
+    if (!checkRole(user.role, ROLE_GROUPS.STAFF_MEMBERS, res, requestId, 'Access to attendance logs is restricted to authorized staff')) {
       return true;
     }
     const tripType = url.searchParams.get('trip_type') ?? undefined;
@@ -789,10 +904,9 @@ export async function handleFleetApiRoutes(
     return true;
   }
 
+  // POST /api/v1/attendance/manual-checkin
   if (method === 'POST' && pathname === '/api/v1/attendance/manual-checkin') {
-    const user = fleetDataStore.getCurrentUser();
-    if (user.role !== 'COR' && user.role !== 'SAD') {
-      sendErrorResponse(res, 403, 'FORBIDDEN', 'Only Coordinators and Super Admins can manually record late boarding.', requestId);
+    if (!checkRole(user.role, ROLE_GROUPS.COORDINATORS_AND_ADMINS, res, requestId, 'Only Coordinators and Super Admins can manually record late boarding')) {
       return true;
     }
     try {
@@ -816,11 +930,28 @@ export async function handleFleetApiRoutes(
     }
   }
 
-  // 9. Maintenance & Repair Ticket Board (Spec 16.4, 16.5 & ADM-05)
+  return false;
+}
+
+/**
+ * Handles /api/v1/maintenance/tickets: Fleet maintenance work orders (Spec 16.4, 16.5 & ADM-05)
+ */
+async function handleMaintenanceEndpoints(
+  req: IncomingMessage,
+  res: ServerResponse,
+  pathname: string,
+  method: string,
+  requestId: string,
+  user: UserProfile,
+  url: URL,
+): Promise<boolean> {
+  if (!pathname.startsWith('/api/v1/maintenance')) {
+    return false;
+  }
+
+  // GET /api/v1/maintenance/tickets
   if (method === 'GET' && pathname === '/api/v1/maintenance/tickets') {
-    const user = fleetDataStore.getCurrentUser();
-    if (!['COR', 'TEC', 'SAD', 'MGT'].includes(user.role)) {
-      sendErrorResponse(res, 403, 'FORBIDDEN', 'Access to maintenance tickets is restricted to fleet operations staff.', requestId);
+    if (!checkRole(user.role, ROLE_GROUPS.MAINTENANCE_DESK, res, requestId, 'Access to maintenance tickets is restricted to fleet operations staff')) {
       return true;
     }
     const entityType = url.searchParams.get('entity_type') ?? undefined;
@@ -830,10 +961,9 @@ export async function handleFleetApiRoutes(
     return true;
   }
 
+  // POST /api/v1/maintenance/tickets
   if (method === 'POST' && pathname === '/api/v1/maintenance/tickets') {
-    const user = fleetDataStore.getCurrentUser();
-    if (user.role !== 'COR' && user.role !== 'TEC' && user.role !== 'SAD') {
-      sendErrorResponse(res, 403, 'FORBIDDEN', 'Insufficient permissions to create maintenance tickets.', requestId);
+    if (!checkRole(user.role, ROLE_GROUPS.MAINTENANCE_RESOLVERS, res, requestId, 'Insufficient permissions to create maintenance tickets')) {
       return true;
     }
     try {
@@ -863,14 +993,13 @@ export async function handleFleetApiRoutes(
     }
   }
 
+  // POST /api/v1/maintenance/tickets/:id/resolve
   if (method === 'POST' && pathname.includes('/api/v1/maintenance/tickets/') && pathname.endsWith('/resolve')) {
-    const parts = pathname.split('/');
-    const ticketId = parts[5] ?? '';
-    const user = fleetDataStore.getCurrentUser();
-    if (!['COR', 'TEC', 'SAD'].includes(user.role)) {
-      sendErrorResponse(res, 403, 'FORBIDDEN', 'Insufficient permissions to resolve maintenance tickets.', requestId);
+    if (!checkRole(user.role, ROLE_GROUPS.MAINTENANCE_RESOLVERS, res, requestId, 'Insufficient permissions to resolve maintenance tickets')) {
       return true;
     }
+    const parts = pathname.split('/');
+    const ticketId = parts[5] ?? '';
     try {
       const body = await parseJsonBody<{ resolution_note: string }>(req);
       if (!body.resolution_note) {
@@ -891,29 +1020,38 @@ export async function handleFleetApiRoutes(
     }
   }
 
-  // 10. Operational Settings (Spec Section 35 & ADM-12)
+  return false;
+}
+
+/**
+ * Handles /api/v1/settings: System configuration (Spec Section 35 & Rule B.6)
+ */
+async function handleSettingsEndpoints(
+  req: IncomingMessage,
+  res: ServerResponse,
+  pathname: string,
+  method: string,
+  requestId: string,
+  user: UserProfile,
+): Promise<boolean> {
+  if (!pathname.startsWith('/api/v1/settings')) {
+    return false;
+  }
+
+  // GET /api/v1/settings
   if (method === 'GET' && pathname === '/api/v1/settings') {
     const settings = fleetDataStore.getSystemSettings();
     sendJsonResponse(res, 200, { settings, total: settings.length, request_id: requestId }, requestId);
     return true;
   }
 
+  // PUT/PATCH /api/v1/settings/:key
   if ((method === 'PUT' || method === 'PATCH') && pathname.startsWith('/api/v1/settings/')) {
-    const key = pathname.replace('/api/v1/settings/', '');
-    const user = fleetDataStore.getCurrentUser();
-
-    // Security check: Only Super Admin (SAD) can update system settings per Spec 16.3 & Rule B.6
-    if (user.role !== 'SAD') {
-      sendErrorResponse(
-        res,
-        403,
-        'FORBIDDEN',
-        'Role Unauthorized: Only Super Administrators (SAD) can modify operational settings (Spec 16.3 & Rule B.6).',
-        requestId,
-      );
+    if (!checkRole(user.role, ROLE_GROUPS.SUPER_ADMINS_ONLY, res, requestId, 'Only Super Administrators (SAD) can modify operational settings (Spec 16.3 & Rule B.6)')) {
       return true;
     }
 
+    const key = pathname.replace('/api/v1/settings/', '');
     try {
       const body = await parseJsonBody<{ value: string | number | boolean; reason: string }>(req);
       if (body.value === undefined || !body.reason) {
@@ -934,11 +1072,23 @@ export async function handleFleetApiRoutes(
     }
   }
 
-  // 11. Immutable Audit Trail (Spec Section 31 & ADM-14)
+  return false;
+}
+
+/**
+ * Handles /api/v1/audit-logs & /api/v1/diagnostics: Audit trails & system telemetry
+ */
+async function handleAuditAndDiagnosticsEndpoints(
+  _req: IncomingMessage,
+  res: ServerResponse,
+  pathname: string,
+  method: string,
+  requestId: string,
+  user: UserProfile,
+): Promise<boolean> {
+  // GET /api/v1/audit-logs
   if (method === 'GET' && pathname === '/api/v1/audit-logs') {
-    const user = fleetDataStore.getCurrentUser();
-    if (!['COR', 'SAD', 'MGT', 'SEC'].includes(user.role)) {
-      sendErrorResponse(res, 403, 'FORBIDDEN', 'Audit logs are restricted to authorized audit and operations staff.', requestId);
+    if (!checkRole(user.role, ROLE_GROUPS.AUDIT_READERS, res, requestId, 'Audit logs are restricted to authorized audit and operations staff')) {
       return true;
     }
     const logs = fleetDataStore.getAuditLogs();
@@ -946,11 +1096,9 @@ export async function handleFleetApiRoutes(
     return true;
   }
 
-  // 12. Operational Diagnostics & Freshness (Spec Section 31.4 & ADM-15)
+  // GET /api/v1/diagnostics
   if (method === 'GET' && pathname === '/api/v1/diagnostics') {
-    const user = fleetDataStore.getCurrentUser();
-    if (!['COR', 'TEC', 'SAD', 'MGT', 'SEC'].includes(user.role)) {
-      sendErrorResponse(res, 403, 'FORBIDDEN', 'Operational diagnostics are restricted to transport staff.', requestId);
+    if (!checkRole(user.role, ROLE_GROUPS.DIAGNOSTICS_VIEWERS, res, requestId, 'Operational diagnostics are restricted to transport staff')) {
       return true;
     }
     const diagnostics = fleetDataStore.getDiagnostics();
@@ -958,11 +1106,27 @@ export async function handleFleetApiRoutes(
     return true;
   }
 
-  // 13. System Store Backup Snapshot (Spec Section 31.6 & Task P0-T14)
+  return false;
+}
+
+/**
+ * Handles /api/v1/admin/backup & /api/v1/admin/restore: Storage persistence backups (Spec Section 31.6)
+ */
+async function handleBackupAndRestoreEndpoints(
+  req: IncomingMessage,
+  res: ServerResponse,
+  pathname: string,
+  method: string,
+  requestId: string,
+  user: UserProfile,
+): Promise<boolean> {
+  if (!pathname.startsWith('/api/v1/admin/')) {
+    return false;
+  }
+
+  // POST /api/v1/admin/backup
   if (method === 'POST' && pathname === '/api/v1/admin/backup') {
-    const user = fleetDataStore.getCurrentUser();
-    if (user.role !== 'SAD') {
-      sendErrorResponse(res, 403, 'FORBIDDEN', 'Role Unauthorized: Only Super Administrators (SAD) can trigger store backup snapshots.', requestId);
+    if (!checkRole(user.role, ROLE_GROUPS.SUPER_ADMINS_ONLY, res, requestId, 'Only Super Administrators (SAD) can trigger store backup snapshots')) {
       return true;
     }
     const backupResult = fleetDataStore.createBackup();
@@ -975,11 +1139,9 @@ export async function handleFleetApiRoutes(
     return true;
   }
 
-  // 14. System Store Backup Restoration (Spec Section 31.6 & Task P0-T14)
+  // POST /api/v1/admin/restore
   if (method === 'POST' && pathname === '/api/v1/admin/restore') {
-    const user = fleetDataStore.getCurrentUser();
-    if (user.role !== 'SAD') {
-      sendErrorResponse(res, 403, 'FORBIDDEN', 'Role Unauthorized: Only Super Administrators (SAD) can restore store backup snapshots.', requestId);
+    if (!checkRole(user.role, ROLE_GROUPS.SUPER_ADMINS_ONLY, res, requestId, 'Only Super Administrators (SAD) can restore store backup snapshots')) {
       return true;
     }
     try {
@@ -1000,6 +1162,97 @@ export async function handleFleetApiRoutes(
       sendErrorResponse(res, 500, 'INTERNAL_ERROR', (err as Error).message, requestId);
       return true;
     }
+  }
+
+  return false;
+}
+
+// ============================================================================
+// Master Fleet API Route Dispatcher
+// ============================================================================
+
+/**
+ * Dispatches fleet, snapshot, and management API requests
+ */
+export async function handleFleetApiRoutes(
+  req: IncomingMessage,
+  res: ServerResponse,
+  url: URL,
+  requestId: string,
+): Promise<boolean> {
+  const pathname = url.pathname;
+  const method = req.method?.toUpperCase() ?? 'GET';
+
+  // Resolve user identity: support per-request role header (for testing and isolated session requests)
+  let user = fleetDataStore.getCurrentUser();
+  const headerRole = req.headers['x-user-role'] || req.headers['x-vjit-role'];
+  if (typeof headerRole === 'string' && ['STU', 'FAC', 'COR', 'TEC', 'SAD', 'MGT', 'SEC'].includes(headerRole.toUpperCase())) {
+    const role = headerRole.toUpperCase() as UserRole;
+    user = {
+      ...user,
+      role,
+      email: role === 'SAD' ? 'admin@vjit.ac.in' : role === 'STU' ? 'student@vjit.ac.in' : role === 'FAC' ? 'faculty@vjit.ac.in' : user.email,
+    };
+  }
+
+  // 1. Snapshot endpoints
+  if (await handleSnapshotEndpoints(req, res, pathname, method, requestId, url)) {
+    return true;
+  }
+
+  // 2. Route endpoints
+  if (await handleRouteEndpoints(req, res, pathname, method, requestId, user)) {
+    return true;
+  }
+
+  // 3. Bus endpoints
+  if (await handleBusEndpoints(req, res, pathname, method, requestId, user)) {
+    return true;
+  }
+
+  // 4. Device endpoints
+  if (await handleDeviceEndpoints(req, res, pathname, method, requestId, user)) {
+    return true;
+  }
+
+  // 5. Alert endpoints
+  if (await handleAlertEndpoints(req, res, pathname, method, requestId, user)) {
+    return true;
+  }
+
+  // 6. User Profile & Role Switcher
+  if (await handleAuthAndProfileEndpoints(req, res, pathname, method, requestId)) {
+    return true;
+  }
+
+  // 7. Demo Simulation Engine
+  if (await handleDemoEndpoints(req, res, pathname, method, requestId)) {
+    return true;
+  }
+
+  // 8. Attendance & Boarding Logs
+  if (await handleAttendanceEndpoints(req, res, pathname, method, requestId, user, url)) {
+    return true;
+  }
+
+  // 9. Maintenance Tickets
+  if (await handleMaintenanceEndpoints(req, res, pathname, method, requestId, user, url)) {
+    return true;
+  }
+
+  // 10. Operational Settings
+  if (await handleSettingsEndpoints(req, res, pathname, method, requestId, user)) {
+    return true;
+  }
+
+  // 11. Audit Logs & Diagnostics
+  if (await handleAuditAndDiagnosticsEndpoints(req, res, pathname, method, requestId, user)) {
+    return true;
+  }
+
+  // 12. Backup & Restore
+  if (await handleBackupAndRestoreEndpoints(req, res, pathname, method, requestId, user)) {
+    return true;
   }
 
   // Unhandled by fleet routes

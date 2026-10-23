@@ -18,6 +18,23 @@ out/
 *.pem
 *.key
 *.cert
+*.crt
+*.jks
+*.keystore
+*.p12
+*.pfx
+*.mobileprovision
+*.id_rsa
+*.id_ed25519
+*.private
+
+# Local databases and dumps
+*.sqlite
+*.sqlite-journal
+*.db
+*.db-journal
+*.sql.gz
+*.dump
 
 # Logs
 npm-debug.log*

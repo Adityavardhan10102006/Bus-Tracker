@@ -3,6 +3,7 @@
  * Conforms to UI-SPEC-1.0 and AG-MASTER-1.0-v2
  */
 export function renderAdminHtml(): string {
+  const isProduction = process.env.APP_ENV === 'production' || process.env.NODE_ENV === 'production';
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -972,6 +973,7 @@ export function renderAdminHtml(): string {
     </div>
   </header>
 
+  ${isProduction ? '' : `
   <!-- Live Simulation Control Bar -->
   <aside class="sim-dock-bar">
     <div style="display:flex; align-items:center; gap:8px;">
@@ -984,6 +986,7 @@ export function renderAdminHtml(): string {
       <button class="btn-sim-action" id="btn-admin-toggle-sim">Toggle Simulation</button>
     </div>
   </aside>
+  `}
 
   <!-- Notification Banner -->
   <div id="feedback-alert" class="feedback-banner" style="margin:16px 24px 0 24px;"></div>
@@ -3817,16 +3820,20 @@ export function renderAdminHtml(): string {
     });
 
     // Step Simulation
-    document.getElementById('btn-admin-step-sim').onclick = async () => {
-      try {
-        const res = await fetch('/api/v1/demo/tick', { method: 'POST' }).then(r => r.json());
-        if (res.success) {
-          document.getElementById('sim-step-text').textContent = 'Step #' + res.state.stepIndex;
-          showFeedback('Telemetry simulated forward 10 seconds.');
-          await loadAdminData();
-        }
-      } catch (e) {}
-    };
+    const btnAdminStep = document.getElementById('btn-admin-step-sim');
+    if (btnAdminStep) {
+      btnAdminStep.onclick = async () => {
+        try {
+          const res = await fetch('/api/v1/demo/tick', { method: 'POST' }).then(r => r.json());
+          if (res.success) {
+            const txt = document.getElementById('sim-step-text');
+            if (txt) txt.textContent = 'Step #' + res.state.stepIndex;
+            showFeedback('Telemetry simulated forward 10 seconds.');
+            await loadAdminData();
+          }
+        } catch (e) {}
+      };
+    }
 
     const btnAdminReset = document.getElementById('btn-admin-reset-sim');
     if (btnAdminReset) {
@@ -3834,8 +3841,22 @@ export function renderAdminHtml(): string {
         try {
           const res = await fetch('/api/v1/demo/reset', { method: 'POST' }).then(r => r.json());
           if (res.success) {
-            document.getElementById('sim-step-text').textContent = 'Step #' + res.state.stepIndex;
+            const txt = document.getElementById('sim-step-text');
+            if (txt) txt.textContent = 'Step #' + res.state.stepIndex;
             showFeedback('Telemetry simulation reset to initial depot baseline.');
+            await loadAdminData();
+          }
+        } catch (e) {}
+      };
+    }
+
+    const btnAdminToggle = document.getElementById('btn-admin-toggle-sim');
+    if (btnAdminToggle) {
+      btnAdminToggle.onclick = async () => {
+        try {
+          const res = await fetch('/api/v1/demo/toggle', { method: 'POST' }).then(r => r.json());
+          if (res.success) {
+            showFeedback('Simulation toggled ' + (res.state.enabled ? 'ON' : 'OFF'));
             await loadAdminData();
           }
         } catch (e) {}

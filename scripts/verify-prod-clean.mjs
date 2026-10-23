@@ -59,20 +59,20 @@ for (const dir of PRODUCTION_DIRS) {
   walkDir(path.join(ROOT_DIR, dir));
 }
 
-// 3. Verify .env is not committed or present as a tracked file
+// 3. Verify .env is not committed or present as a tracked file in git
 const gitEnvPath = path.join(ROOT_DIR, '.env');
 if (fs.existsSync(gitEnvPath)) {
-  const envContent = fs.readFileSync(gitEnvPath, 'utf-8');
-  if (envContent.includes('POSTGRES_PASSWORD') || envContent.includes('JWT_SECRET')) {
-    // Check if git tracks it
-    try {
-      const isTracked = fs.existsSync(path.join(ROOT_DIR, '.git'));
-      if (isTracked) {
-        // Safe check
+  try {
+    if (fs.existsSync(path.join(ROOT_DIR, '.git'))) {
+      const { execSync } = await import('node:child_process');
+      const tracked = execSync('git ls-files .env', { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'ignore'] }).trim();
+      if (tracked.length > 0) {
+        console.error('[VERIFY:PROD-CLEAN ERROR] Security Violation: .env file is tracked in git index!');
+        violationCount++;
       }
-    } catch {
-      // Ignored
     }
+  } catch {
+    // Git check fallback if git CLI is unavailable
   }
 }
 

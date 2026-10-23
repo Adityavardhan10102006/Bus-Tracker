@@ -14,22 +14,32 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
+      - name: Setup Node.js (Node 22 LTS per .nvmrc)
         uses: actions/setup-node@v4
         with:
           node-version: 22
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci
 
       - name: Verify Anti-Mock Rules (Rule B.2)
-        run: node scripts/verify-no-mock.mjs
+        run: npm run verify:no-mock
 
       - name: Verify Clean Repository (Zero Docker)
-        run: node scripts/verify-prod-clean.mjs
+        run: npm run verify:prod-clean
 
-      - name: Custom Static Analysis Lint
-        run: node scripts/lint.mjs
+      - name: Custom Static Analysis Lint & Security Checks
+        run: npm run lint
 
-      - name: Verify Route Auth Coverage
-        run: node scripts/verify-routes-auth.mjs
+      - name: Verify Route Auth Coverage (Rule B.7 & B.8)
+        run: npm run verify:routes-auth
 
-      - name: Run Test Suites
+      - name: Workspace Typecheck (Strict TypeScript)
+        run: npm run typecheck
+
+      - name: Workspace Build
+        run: npm run build
+
+      - name: Run Unit & Contract Test Suites
         run: npm test

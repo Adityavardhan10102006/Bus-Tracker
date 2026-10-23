@@ -418,8 +418,9 @@ describe('Hardware, Bus, Route & Student Workflow Tests (Production Verification
   test('P-BUS-01: Create bus with display name and assigned route corridor', async () => {
     fleetDataStore.switchUserRole('COR');
     const route = fleetDataStore.getRoutes()[0];
-    const uniqueNum = 'Bus ' + Math.floor(100 + Math.random() * 900);
-    const uniqueReg = 'TS 09 UB ' + Math.floor(1000 + Math.random() * 9000);
+    const uniqueSuffix = Date.now().toString(36).slice(-4).toUpperCase();
+    const uniqueNum = 'Bus ' + uniqueSuffix;
+    const uniqueReg = 'TS 09 UB ' + uniqueSuffix;
 
     const res = await request({
       path: '/api/v1/buses',

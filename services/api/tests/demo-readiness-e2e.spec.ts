@@ -196,4 +196,78 @@ describe('End-to-End Integration & Demo Readiness Pass', () => {
     assert.ok(body.includes('GPS Tracker Hardware'), 'Must render hardware tracking section');
     assert.ok(body.includes('Routes & Stop Geofences'), 'Must render routes section');
   });
+
+  test('6. Rule R-M5: Demo simulation endpoints return 403 SIMULATOR_PROHIBITED in production', async () => {
+    const origEnv = process.env.APP_ENV;
+    try {
+      process.env.APP_ENV = 'production';
+      const tickRes = await request({
+        method: 'POST',
+        path: '/api/v1/demo/tick',
+      });
+      assert.equal(tickRes.status, 403);
+      assert.equal(tickRes.json.error.code, 'SIMULATOR_PROHIBITED');
+
+      const toggleRes = await request({
+        method: 'POST',
+        path: '/api/v1/demo/toggle',
+      });
+      assert.equal(toggleRes.status, 403);
+      assert.equal(toggleRes.json.error.code, 'SIMULATOR_PROHIBITED');
+
+      const resetRes = await request({
+        method: 'POST',
+        path: '/api/v1/demo/reset',
+      });
+      assert.equal(resetRes.status, 403);
+      assert.equal(resetRes.json.error.code, 'SIMULATOR_PROHIBITED');
+    } finally {
+      if (origEnv !== undefined) {
+        process.env.APP_ENV = origEnv;
+      } else {
+        delete process.env.APP_ENV;
+      }
+    }
+  });
+
+  test('7. Rule R-M5: Demo simulation rejects requests with unauthorized Host header', async () => {
+    const origEnv = process.env.APP_ENV;
+    try {
+      process.env.APP_ENV = 'local';
+      const tickRes = await request({
+        method: 'POST',
+        path: '/api/v1/demo/tick',
+        headers: {
+          Host: 'evil-external-domain.com',
+        },
+      });
+      assert.equal(tickRes.status, 403);
+      assert.equal(tickRes.json.error.code, 'SIMULATOR_PROHIBITED');
+      assert.ok(tickRes.json.error.message.includes('evil-external-domain.com'));
+    } finally {
+      if (origEnv !== undefined) {
+        process.env.APP_ENV = origEnv;
+      } else {
+        delete process.env.APP_ENV;
+      }
+    }
+  });
+
+  test('8. Production UI: Omits simulation controls in /app and /admin when in production', async () => {
+    const origEnv = process.env.APP_ENV;
+    try {
+      process.env.APP_ENV = 'production';
+      const appHtml = renderMobileHtml();
+      assert.ok(!appHtml.includes('id="btn-step-sim"'), 'Production /app must omit simulation step button');
+
+      const adminHtml = renderAdminHtml();
+      assert.ok(!adminHtml.includes('id="btn-admin-step-sim"'), 'Production /admin must omit simulation step button');
+    } finally {
+      if (origEnv !== undefined) {
+        process.env.APP_ENV = origEnv;
+      } else {
+        delete process.env.APP_ENV;
+      }
+    }
+  });
 });

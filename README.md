@@ -8,7 +8,7 @@
 [![Node.js Version](https://img.shields.io/badge/Node.js-v22_LTS-339933?style=for-the-badge&logo=nodedotjs&logoColor=white)](https://nodejs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.x_Strict-3178C6?style=for-the-badge&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16_+_PostGIS_3.4-4169E1?style=for-the-badge&logo=postgresql&logoColor=white)](https://www.postgresql.org/)
-[![Tests Passing](https://img.shields.io/badge/Tests-244_Passing-success?style=for-the-badge&logo=checkmarx&logoColor=white)](#automated-verification--testing)
+[![Tests Passing](https://img.shields.io/badge/Tests-302_Passing-success?style=for-the-badge&logo=checkmarx&logoColor=white)](#automated-verification--testing)
 [![Zero Mocks](https://img.shields.io/badge/Rule_B.2-Zero_Mock_Clean-emerald?style=for-the-badge&logo=shield&logoColor=white)](#strict-anti-mock-policy-rule-b2)
 [![Pure Node.js](https://img.shields.io/badge/Workflow-Pure_Node.js_%2F_Zero_Docker-blueviolet?style=for-the-badge&logo=npm&logoColor=white)](#direct-local-nodejs-workflow)
 
@@ -22,6 +22,7 @@
 [Application Surfaces](#application-surfaces) •
 [Telemetry Pipeline](#gps-telemetry--hardware-pipeline) •
 [Verification Gates](#quality--security-release-gates) •
+[Code Quality Guide](docs/security/code-quality-system.md) •
 [Documentation](#monorepo-structure)
 
 </div>
@@ -203,37 +204,41 @@ The unified server launches immediately on `http://localhost:3000`:
 
 ## Automated Verification & Testing
 
-Every commit and pull request must satisfy all automated release gates:
+Every commit and pull request must satisfy all automated quality and release gates:
 
 ```bash
-# Run full automated test suite (203 tests across all workspaces)
+# Fast everyday pre-flight checks (~1.5s): linting, anti-mock audit, route auth, git clean
+npm run check
+
+# Run full automated test suite (302 tests across all workspaces)
 npm test
 
-# Typecheck all 10 packages in strict mode
+# Typecheck all packages in strict mode
 npm run typecheck
 
-# Verify zero mock or fake data in production directories (Rule B.2)
-npm run verify:no-mock
-
-# Verify all HTTP endpoints enforce strict authentication and RBAC guards
-npm run verify:routes-auth
-
-# Verify production cleanliness (zero lingering Docker files)
-npm run verify:prod-clean
+# Full pre-merge release verification gate (check + typecheck + build + test)
+npm run verify
 ```
 
 ### Verification Test Summary
 ```
 ✔ Unit & Domain Test Suites ........... 207 passed, 0 failed
 ✔ Storage Persistence & Restart ......   2 passed, 0 failed
+✔ Critical Workflows Regression Suite . 13 passed, 0 failed
 ✔ Hardware Contract Simulation .......   4 passed, 0 failed
 ✔ Theme & Accessible Contrast .........  12 passed, 0 failed
 ✔ Product Quality & Geofence ..........  10 passed, 0 failed
+✔ Student & Faculty Visibility ........  46 passed, 0 failed
 ✔ E2E Hardware Pipeline Integration ..   4 passed, 0 failed
+✔ API Integration & Auth Routes ......   4 passed, 0 failed
 -------------------------------------------------------------------
-Total Automated Tests Passing ........ 239 of 239 (100% Success)
+Total Automated Tests Passing ........ 302 of 302 (100% Success)
 Strict TypeScript Typechecks .........  17 of  17 Packages Clean
+Rule B.2 Zero Mock Scan ..............  98 of  98 Files Clean
+Route Authorization RBAC Matrix ......  14 of  14 Endpoints Guarded
 ```
+
+See the [Code Quality & Regression Prevention Architecture Guide](docs/security/code-quality-system.md) for full architectural documentation.
 
 ---
 
@@ -241,14 +246,16 @@ Strict TypeScript Typechecks .........  17 of  17 Packages Clean
 
 | Script | Command | Purpose |
 | :--- | :--- | :--- |
+| `npm run check` | `npm run lint && npm run verify:no-mock && ...` | Fast pre-flight gate (~1.5s): audits code quality, anti-mock compliance, and route auth. |
+| `npm test` | `npm run test:unit && npm run test:contract` | Executes all 302 unit, contract, regression, and integration tests. |
+| `npm run verify` | `npm run check && npm run typecheck && npm run build && npm test` | Full pre-merge release gate validating all quality checks, types, builds, and tests. |
 | `npm run build` | `turbo run build` | Compiles all TypeScript packages via Turborepo. |
 | `npm start` | `node services/api/dist/main.js` | Launches the unified API, Web UI, and Ingestion server. |
-| `npm test` | `npm run test:unit && npm run test:contract` | Executes all 244 unit, contract, and integration tests. |
 | `npm run typecheck` | `turbo run typecheck` | Validates strict TypeScript types across the monorepo. |
-| `npm run lint` | `node ./scripts/lint.mjs` | Banned pattern audit (`$queryRawUnsafe`, `console.log`). |
+| `npm run lint` | `node ./scripts/lint.mjs` | Multi-rule code quality audit (SQL injection, secrets, async patterns, banned imports). |
 | `npm run verify:no-mock` | `node ./scripts/verify-no-mock.mjs` | Rule B.2 gate: scans for mock or dummy strings in production code. |
 | `npm run verify:routes-auth` | `node ./scripts/verify-routes-auth.mjs` | Audits endpoint authorization guards against the permissions matrix. |
-| `npm run verify:prod-clean` | `node ./scripts/verify-prod-clean.mjs` | Confirms repository cleanliness and pure Node.js workflow. |
+| `npm run verify:prod-clean` | `node ./scripts/verify-prod-clean.mjs` | Confirms repository cleanliness, zero lingering Docker files, and no tracked secrets. |
 | `npm run db:purge-synthetic` | `npm run --workspace=@vjit/db purge:synthetic` | Purges synthetic rows (`is_synthetic = true`) after dev testing. |
 
 ---

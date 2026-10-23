@@ -3,7 +3,9 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { FleetDataStore } from '../dist/store/fleet-data-store.js';
-import { getReadinessStatus } from '../dist/health/health.js';
+import { checkDatabaseConnection, getReadinessStatus } from '../dist/health/health.js';
+import { createApiServer } from '../dist/main.js';
+import http from 'node:http';
 
 describe('Phase 3: Persistent Storage & Administrative Change Survival', () => {
   const testPersistenceFile = path.resolve(process.cwd(), 'tmp/test-persistence-restart.json');
@@ -110,5 +112,59 @@ describe('Phase 3: Persistent Storage & Administrative Change Survival', () => {
     const connectedStatus = await getReadinessStatus(async () => true);
     assert.equal(connectedStatus.status, 'ok');
     assert.equal(connectedStatus.database, 'connected');
+  });
+
+  test('checkDatabaseConnection probe returns false when target database port is closed', async () => {
+    // Test on closed local port (e.g. 64999)
+    const isUp = await checkDatabaseConnection('postgresql://app_runtime:pass@127.0.0.1:64999/bus_tracker');
+    assert.equal(isUp, false);
+  });
+
+  test('HTTP GET /health/ready truthfully returns 503 unready when database is disconnected', async () => {
+    const server = createApiServer(undefined, undefined, async () => false);
+    await new Promise<void>(resolve => server.listen(0, resolve));
+    const port = (server.address() as any).port;
+
+    try {
+      const res = await new Promise<{ status: number; json: any }>((resolve, reject) => {
+        http.get(`http://127.0.0.1:${port}/health/ready`, r => {
+          let raw = '';
+          r.on('data', chunk => raw += chunk);
+          r.on('end', () => {
+            resolve({ status: r.statusCode ?? 500, json: JSON.parse(raw) });
+          });
+        }).on('error', reject);
+      });
+
+      assert.equal(res.status, 503);
+      assert.equal(res.json.status, 'unready');
+      assert.equal(res.json.database, 'disconnected');
+    } finally {
+      await new Promise<void>(resolve => server.close(() => resolve()));
+    }
+  });
+
+  test('HTTP GET /health/ready returns 200 ok when database is verified connected', async () => {
+    const server = createApiServer(undefined, undefined, async () => true);
+    await new Promise<void>(resolve => server.listen(0, resolve));
+    const port = (server.address() as any).port;
+
+    try {
+      const res = await new Promise<{ status: number; json: any }>((resolve, reject) => {
+        http.get(`http://127.0.0.1:${port}/health/ready`, r => {
+          let raw = '';
+          r.on('data', chunk => raw += chunk);
+          r.on('end', () => {
+            resolve({ status: r.statusCode ?? 500, json: JSON.parse(raw) });
+          });
+        }).on('error', reject);
+      });
+
+      assert.equal(res.status, 200);
+      assert.equal(res.json.status, 'ok');
+      assert.equal(res.json.database, 'connected');
+    } finally {
+      await new Promise<void>(resolve => server.close(() => resolve()));
+    }
   });
 });

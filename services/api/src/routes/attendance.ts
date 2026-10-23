@@ -187,11 +187,12 @@ export async function handleAttendanceScan(
  * Implements Specification 18.3 & 18.4 (manual check-in, guest tracking, correction)
  */
 export async function handleAttendanceCheckIn(
-  _req: IncomingMessage,
+  req: IncomingMessage,
   res: ServerResponse,
   rawBody: string,
   requestId: string,
   store: AttendanceDataStore,
+  callerRole?: string,
 ): Promise<void> {
   let parsedJson: unknown;
   try {
@@ -220,6 +221,20 @@ export async function handleAttendanceCheckIn(
   const data = parseResult.data;
   const nowUtc = data.timestamp_utc ?? new Date().toISOString();
 
+  // Authoritative role resolution: prevent client-side actor_role spoofing (Spec 18.3 & Rule B.3)
+  const headerRole = (req.headers['x-user-role'] || req.headers['x-vjit-role']) as string | undefined;
+  const authoritativeRole = callerRole || (typeof headerRole === 'string' ? headerRole.toUpperCase() : data.actor_role);
+
+  if (!['COR', 'SAD', 'FAC'].includes(authoritativeRole)) {
+    return sendErrorResponse(
+      res,
+      403,
+      'PERMISSION_DENIED',
+      `Role '${authoritativeRole}' is not authorized to execute manual attendance operations. Allowed roles: COR, SAD, FAC.`,
+      requestId,
+    );
+  }
+
   if (data.type === 'MANUAL_LATE') {
     if (!data.student_id) {
       return sendErrorResponse(res, 400, 'STUDENT_REQUIRED', 'student_id is required.', requestId);
@@ -235,7 +250,7 @@ export async function handleAttendanceCheckIn(
       reason: data.reason,
       boarded_at_utc: nowUtc,
       recorded_by_user_id: data.actor_id,
-      recorded_by_role: data.actor_role,
+      recorded_by_role: authoritativeRole as any,
       boarding_stop_id: data.boarding_stop_id ?? null,
       boarding_stop_name: data.boarding_stop_name ?? null,
     });
@@ -266,7 +281,7 @@ export async function handleAttendanceCheckIn(
       guest_phone: data.guest_phone ?? '',
       reason: data.reason,
       recorded_by_user_id: data.actor_id,
-      recorded_by_role: data.actor_role,
+      recorded_by_role: authoritativeRole as any,
       recorded_at_utc: nowUtc,
     });
 
@@ -291,7 +306,7 @@ export async function handleAttendanceCheckIn(
       new_status: data.new_status ?? 'LATE_BOARDED',
       reason: data.reason,
       corrected_by_user_id: data.actor_id,
-      corrected_by_role: data.actor_role,
+      corrected_by_role: authoritativeRole as any,
       recorded_at_utc: nowUtc,
     });
 

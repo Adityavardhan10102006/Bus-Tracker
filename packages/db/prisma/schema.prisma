@@ -151,18 +151,22 @@ model AuditLog {
 }
 
 model Device {
-  id            String       @id @db.VarChar(32) // HW_xxxx
-  serial_number String       @unique @db.VarChar(64)
-  imei          String       @unique @db.VarChar(15)
-  iccid         String       @db.VarChar(20)
-  status        DeviceStatus @default(PROVISIONED)
-  first_used_at DateTime?    @db.Timestamptz
-  created_at    DateTime     @default(now()) @db.Timestamptz
-  updated_at    DateTime     @updatedAt @db.Timestamptz
-  is_synthetic  Boolean      @default(false)
+  id               String       @id @db.VarChar(32) // HW_xxxx
+  serial_number    String       @unique @db.VarChar(64)
+  imei             String       @unique @db.VarChar(15)
+  iccid            String       @db.VarChar(20)
+  model            String       @default("ESP8266_NEO6M") @db.VarChar(64)
+  nickname         String?      @db.VarChar(64)
+  firmware_version String       @default("1.2.0") @db.VarChar(32)
+  status           DeviceStatus @default(PROVISIONED)
+  first_used_at    DateTime?    @db.Timestamptz
+  created_at       DateTime     @default(now()) @db.Timestamptz
+  updated_at       DateTime     @updatedAt @db.Timestamptz
+  is_synthetic     Boolean      @default(false)
 
-  tokens        DeviceToken[]
-  bus_links     DeviceBusLink[]
+  tokens           DeviceToken[]
+  bus_links        DeviceBusLink[]
+  telemetry        LocationTelemetry[]
 
   @@map("devices")
 }
@@ -182,18 +186,67 @@ model DeviceToken {
   @@map("device_tokens")
 }
 
+model Route {
+  id              String      @id @default(uuid()) @db.Uuid
+  code            String      @unique @db.VarChar(32)
+  name            String      @db.VarChar(128)
+  origin          String      @db.VarChar(128)
+  destination     String      @db.VarChar(128)
+  polyline        Json?
+  geometry_source String      @default("SAVED_GEOMETRY") @db.VarChar(32)
+  distance_meters Int?
+  is_active       Boolean     @default(true)
+  created_at      DateTime    @default(now()) @db.Timestamptz
+  updated_at      DateTime    @updatedAt @db.Timestamptz
+  is_synthetic    Boolean     @default(false)
+
+  stops           RouteStop[]
+  buses           Bus[]
+
+  @@map("routes")
+}
+
+model RouteStop {
+  id             String    @id @default(uuid()) @db.Uuid
+  route_id       String    @db.Uuid
+  name           String    @db.VarChar(128)
+  sequence       Int
+  latitude       Decimal   @db.Decimal(10, 7)
+  longitude      Decimal   @db.Decimal(10, 7)
+  scheduled_time String?   @db.VarChar(16)
+  status         String    @default("SCHEDULED") @db.VarChar(32)
+  created_at     DateTime  @default(now()) @db.Timestamptz
+  updated_at     DateTime  @updatedAt @db.Timestamptz
+  is_synthetic   Boolean   @default(false)
+
+  route          Route     @relation(fields: [route_id], references: [id], onDelete: Cascade)
+
+  @@index([route_id])
+  @@index([route_id, sequence])
+  @@map("route_stops")
+}
+
 model Bus {
-  id           String          @id @default(uuid()) @db.Uuid
-  bus_number   String          @unique @db.VarChar(32)
-  registration String          @unique @db.VarChar(32)
-  capacity     Int             @default(50)
-  status       BusStatus       @default(ACTIVE)
-  created_at   DateTime        @default(now()) @db.Timestamptz
-  updated_at   DateTime        @updatedAt @db.Timestamptz
-  is_synthetic Boolean         @default(false)
+  id                String          @id @default(uuid()) @db.Uuid
+  bus_number        String          @unique @db.VarChar(32)
+  registration      String          @unique @db.VarChar(32)
+  display_name      String?         @db.VarChar(64)
+  assigned_route_id String?         @db.Uuid
+  capacity          Int             @default(50)
+  status            BusStatus       @default(ACTIVE)
+  insurance_expiry  DateTime?       @db.Date
+  fitness_expiry    DateTime?       @db.Date
+  pollution_expiry  DateTime?       @db.Date
+  permit_expiry     DateTime?       @db.Date
+  created_at        DateTime        @default(now()) @db.Timestamptz
+  updated_at        DateTime        @updatedAt @db.Timestamptz
+  is_synthetic      Boolean         @default(false)
 
-  device_links DeviceBusLink[]
+  assigned_route    Route?          @relation(fields: [assigned_route_id], references: [id], onDelete: SetNull)
+  device_links      DeviceBusLink[]
+  telemetry         LocationTelemetry[]
 
+  @@index([assigned_route_id])
   @@map("buses")
 }
 
@@ -213,6 +266,64 @@ model DeviceBusLink {
   @@index([device_id])
   @@index([bus_id])
   @@map("device_bus_links")
+}
+
+model LocationTelemetry {
+  id               String    @id @default(uuid()) @db.Uuid
+  bus_id           String    @db.Uuid
+  device_id        String    @db.VarChar(32)
+  latitude         Decimal   @db.Decimal(10, 7)
+  longitude        Decimal   @db.Decimal(10, 7)
+  speed_kmh        Decimal   @db.Decimal(5, 2)
+  heading_deg      Decimal   @db.Decimal(5, 2)
+  recorded_at      DateTime  @db.Timestamptz
+  received_at      DateTime  @default(now()) @db.Timestamptz
+  telemetry_source String    @default("HARDWARE") @db.VarChar(32)
+  is_simulated     Boolean   @default(false)
+  is_synthetic     Boolean   @default(false)
+
+  bus              Bus       @relation(fields: [bus_id], references: [id], onDelete: Cascade)
+  device           Device    @relation(fields: [device_id], references: [id], onDelete: Cascade)
+
+  @@index([bus_id, recorded_at])
+  @@index([device_id, recorded_at])
+  @@map("location_telemetry")
+}
+
+model MaintenanceTicket {
+  id               String    @id @default(uuid()) @db.Uuid
+  entity_type      String    @db.VarChar(32)
+  entity_id        String    @db.VarChar(128)
+  category         String    @db.VarChar(64)
+  severity         String    @db.VarChar(32)
+  status           String    @default("OPEN") @db.VarChar(32)
+  title            String    @db.VarChar(255)
+  description      String    @db.Text
+  reported_by      String    @db.VarChar(128)
+  assigned_to      String?   @db.VarChar(128)
+  resolution_notes String?   @db.Text
+  created_at       DateTime  @default(now()) @db.Timestamptz
+  updated_at       DateTime  @updatedAt @db.Timestamptz
+  is_synthetic     Boolean   @default(false)
+
+  @@index([entity_type, entity_id])
+  @@index([status])
+  @@map("maintenance_tickets")
+}
+
+model ServiceAlert {
+  id           String    @id @default(uuid()) @db.Uuid
+  category     String    @db.VarChar(32)
+  priority     String    @db.VarChar(32)
+  title        String    @db.VarChar(255)
+  message      String    @db.Text
+  read         Boolean   @default(false)
+  created_at   DateTime  @default(now()) @db.Timestamptz
+  is_synthetic Boolean   @default(false)
+
+  @@index([priority])
+  @@index([created_at])
+  @@map("service_alerts")
 }
 
 model FeatureFlag {

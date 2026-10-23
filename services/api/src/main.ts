@@ -8,8 +8,12 @@ import {
   applySecurityHeaders,
   isAllowedContentType,
   sendErrorResponse,
+  checkRateLimit,
+  applyRateLimitHeaders,
+  getClientIp,
+  validateSameOrigin,
 } from './middleware/security.js';
-import { getLivenessStatus, getReadinessStatus, getVersionInfo } from './health/health.js';
+import { getLivenessStatus, getReadinessStatus, getVersionInfo, checkDatabaseConnection } from './health/health.js';
 import { handleTelemetryIngestion, type IngestionDataStore } from './routes/telemetry.js';
 import { handleHeartbeatIngestion } from './routes/heartbeat.js';
 import {
@@ -39,6 +43,7 @@ export interface ApiStores {
 export function createApiServer(
   customStore?: IngestionDataStore | ApiStores,
   customHmacKeys?: Record<string, string>,
+  customCheckDatabase?: () => Promise<boolean>,
 ) {
   // Support either single IngestionDataStore (legacy) or full ApiStores
   let stores: ApiStores = {};
@@ -68,6 +73,35 @@ export function createApiServer(
     runWithRequestContext(requestId, () => {
       applySecurityHeaders(res, requestId);
 
+      // CSRF validation on browser state-changing mutations
+      if (!validateSameOrigin(req)) {
+        return sendErrorResponse(
+          res,
+          403,
+          'CSRF_FORBIDDEN',
+          'Cross-origin state-changing requests are prohibited.',
+          requestId,
+        );
+      }
+
+      // Sliding-window rate limiting per IP (120 req/min in prod, relaxed in tests)
+      const clientIp = getClientIp(req);
+      const isTestEnv = process.env.NODE_ENV === 'test';
+      const limit = isTestEnv ? 5000 : 120;
+      const rateLimit = checkRateLimit(clientIp, limit, 60000);
+      applyRateLimitHeaders(res, rateLimit);
+
+      if (!rateLimit.allowed) {
+        res.setHeader('Retry-After', String(rateLimit.reset));
+        return sendErrorResponse(
+          res,
+          429,
+          'RATE_LIMIT_EXCEEDED',
+          `Too many requests. Limit exceeded. Please retry in ${rateLimit.reset} seconds.`,
+          requestId,
+        );
+      }
+
       const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`);
       const pathname = url.pathname;
       const method = req.method?.toUpperCase();
@@ -86,7 +120,7 @@ export function createApiServer(
       }
 
       if (method === 'GET' && (pathname === '/health/ready' || pathname === '/readyz')) {
-        return getReadinessStatus()
+        return getReadinessStatus(customCheckDatabase ?? checkDatabaseConnection)
           .then(readyStatus => {
             const statusCode = readyStatus.status === 'ok' ? 200 : 503;
             res.writeHead(statusCode, { 'Content-Type': 'application/json; charset=utf-8' });
@@ -273,12 +307,15 @@ export function createApiServer(
             }
 
             if (pathname === '/api/v1/attendance/check-in') {
+              const headerRole = (req.headers['x-user-role'] || req.headers['x-vjit-role']) as string | undefined;
+              const callerRole = typeof headerRole === 'string' ? headerRole.toUpperCase() : undefined;
               return await handleAttendanceCheckIn(
                 req,
                 res,
                 body,
                 requestId,
                 attendanceStore,
+                callerRole,
               );
             }
 
@@ -340,8 +377,8 @@ if (process.argv[1]?.endsWith('main.js') || process.argv[1]?.endsWith('main.ts')
       }
     }
 
-    // Baseline fallbacks for direct local demonstration
-    process.env.DATABASE_URL = process.env.DATABASE_URL || 'postgresql://app_runtime:runtime_secure_pass_phrase_vjit_2026@localhost:5432/bus_tracker_dev?schema=public';
+    // Fallbacks for local execution when not provided in environment
+    process.env.DATABASE_URL = process.env.DATABASE_URL || 'postgresql://localhost:5432/bus_tracker_dev?schema=public';
     process.env.JWT_SECRET = process.env.JWT_SECRET || 'vjit_jwt_signing_key_production_grade_entropy_2026_x89a';
     process.env.DEVICE_TOKEN_HMAC_KEYS = process.env.DEVICE_TOKEN_HMAC_KEYS || JSON.stringify({ v1: 'vjit_device_token_hmac_entropy_keyval_cluster_987' });
     process.env.QR_HMAC_KEYS = process.env.QR_HMAC_KEYS || JSON.stringify({ v1: 'vjit_qr_signature_hmac_entropy_keyval_cluster_456' });

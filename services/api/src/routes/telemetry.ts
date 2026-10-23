@@ -26,6 +26,14 @@ export interface IngestionDataStore {
     is_revoked: boolean;
   }>>;
   getActiveDeviceBusLinks(deviceId: string): Promise<DeviceBusLinkRecord[]>;
+  getRecentSignatures?(deviceId: string): Array<{
+    device_id: string;
+    boot_id: string;
+    seq: number;
+    latitude: number;
+    longitude: number;
+    recorded_at: string;
+  }>;
   saveTelemetryBatch?(batch: {
     deviceId: string;
     busId: string | null;
@@ -144,8 +152,12 @@ export async function handleTelemetryIngestion(
   const { busId } = resolveActiveBusForDevice(device.id, receivedAt, links);
 
   // 6. Process sample batch through 14-step validation pipeline
+  const existingSamples = store.getRecentSignatures ? store.getRecentSignatures(telemetryData.device_id) : undefined;
   const batchResult = processTelemetryBatch(telemetryData.samples, {
     serverReceivedAt: receivedAt,
+    deviceId: telemetryData.device_id,
+    bootId: telemetryData.boot_id,
+    existingSamples,
   });
 
   // 7. Process hardware events (e.g., SOS)

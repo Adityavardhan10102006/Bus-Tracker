@@ -11,18 +11,22 @@ async function main() {
   logger.info('[DB:PURGE-SYNTHETIC] Purging all synthetic test records from database...');
 
   const tables = [
-    'rate_counters',
-    'device_bus_links',
-    'device_tokens',
-    'devices',
-    'buses',
-    'recovery_codes',
-    'mfa_factors',
-    'sessions',
-    'email_otps',
-    'settings',
-    'feature_flags',
-    'users',
+    'locationTelemetry',
+    'deviceBusLink',
+    'deviceToken',
+    'device',
+    'bus',
+    'routeStop',
+    'route',
+    'maintenanceTicket',
+    'serviceAlert',
+    'recoveryCode',
+    'mfaFactor',
+    'session',
+    'emailOtp',
+    'setting',
+    'featureFlag',
+    'user',
   ];
 
   let totalPurged = 0;

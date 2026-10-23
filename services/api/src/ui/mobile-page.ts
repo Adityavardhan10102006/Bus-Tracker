@@ -3,6 +3,7 @@
  * Conforms to UI-SPEC-1.0 and AG-MASTER-1.0-v2
  */
 export function renderMobileHtml(): string {
+  const isProduction = process.env.APP_ENV === 'production' || process.env.NODE_ENV === 'production';
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -1435,12 +1436,14 @@ export function renderMobileHtml(): string {
       </div>
     </div>
 
+    ${isProduction ? '' : `
     <!-- Floating Demo Simulation Step Bar -->
     <div class="demo-floating-bar">
       <span>Simulation Engine: <strong id="demo-step-indicator">Step #3</strong></span>
       <button class="btn-step-demo" id="btn-step-sim">Advance 10s &rarr;</button>
       <button class="btn-step-demo" id="btn-reset-sim" style="background:#475569; margin-left:4px;">Reset</button>
     </div>
+    `}
 
     <!-- Bottom Navigation Tab Bar -->
     <nav class="tab-bar">
@@ -2611,15 +2614,19 @@ export function renderMobileHtml(): string {
     });
 
     // Step Simulation Handler
-    document.getElementById('btn-step-sim').onclick = async () => {
-      try {
-        const res = await fetch('/api/v1/demo/tick', { method: 'POST' }).then(r => r.json());
-        if (res.success) {
-          document.getElementById('demo-step-indicator').textContent = 'Step #' + res.state.stepIndex;
-          await loadAllData();
-        }
-      } catch (err) {}
-    };
+    const btnStepSim = document.getElementById('btn-step-sim');
+    if (btnStepSim) {
+      btnStepSim.onclick = async () => {
+        try {
+          const res = await fetch('/api/v1/demo/tick', { method: 'POST' }).then(r => r.json());
+          if (res.success) {
+            const ind = document.getElementById('demo-step-indicator');
+            if (ind) ind.textContent = 'Step #' + res.state.stepIndex;
+            await loadAllData();
+          }
+        } catch (err) {}
+      };
+    }
 
     const btnResetSim = document.getElementById('btn-reset-sim');
     if (btnResetSim) {

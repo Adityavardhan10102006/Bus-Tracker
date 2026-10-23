@@ -5,6 +5,7 @@ import {
   isImplausibleJump,
   hasClockSkew,
 } from './validation.js';
+import { evaluateDeduplication, type StoredSampleSignature } from './dedupe.js';
 
 export type SampleRejectionReason =
   | 'OUT_OF_RANGE'
@@ -29,17 +30,20 @@ export interface SampleValidationOutcome {
 
 export interface PipelineEvaluationContext {
   serverReceivedAt: Date;
+  deviceId?: string | undefined;
+  bootId?: string | undefined;
+  existingSamples?: StoredSampleSignature[] | undefined;
   lastAcceptedSample?: {
     latitude: number;
     longitude: number;
     recorded_at: string;
-  } | null;
+  } | null | undefined;
   serviceAreaBounds?: {
     minLat: number;
     maxLat: number;
     minLng: number;
     maxLng: number;
-  };
+  } | undefined;
 }
 
 // Bounding box for VJIT Campus Transit service region (Telangana / Hyderabad metro)
@@ -127,6 +131,23 @@ export function validateTelemetrySample(
       isOutOfArea: false,
       isImplausibleJump: false,
     };
+  }
+
+  // Step 9: Replay and sequence conflict check
+  if (context.existingSamples && context.deviceId && context.bootId) {
+    const dedupe = evaluateDeduplication(sample, context.deviceId, context.bootId, context.existingSamples);
+    if (dedupe.isDuplicate) {
+      return {
+        seq,
+        accepted: false,
+        isLiveEligible: false,
+        rejectionReason: dedupe.hasConflict ? 'CONFLICT' : 'DUPLICATE',
+        isBuffered: false,
+        hasClockSkew: false,
+        isOutOfArea: false,
+        isImplausibleJump: false,
+      };
+    }
   }
 
   const isBuffered = freshness === 'BUFFERED';
