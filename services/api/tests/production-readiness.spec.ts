@@ -177,6 +177,16 @@ describe('Production Readiness & Server-Side Security Audit', () => {
       assert.strictEqual(res.status, 403);
       assert.strictEqual(res.json?.error?.code, 'FORBIDDEN');
     });
+
+    test('STU cannot restore database backups (POST /api/v1/admin/restore returns 403)', async () => {
+      const res = await request({
+        path: '/api/v1/admin/restore',
+        method: 'POST',
+        body: { backupPath: 'dummy' },
+      });
+      assert.strictEqual(res.status, 403);
+      assert.strictEqual(res.json?.error?.code, 'FORBIDDEN');
+    });
   });
 
   // -------------------------------------------------------------
@@ -210,6 +220,16 @@ describe('Production Readiness & Server-Side Security Audit', () => {
       const res = await request({
         path: '/api/v1/admin/backup',
         method: 'POST',
+      });
+      assert.strictEqual(res.status, 403);
+      assert.strictEqual(res.json?.error?.code, 'FORBIDDEN');
+    });
+
+    test('TEC cannot restore system backups (POST /api/v1/admin/restore returns 403)', async () => {
+      const res = await request({
+        path: '/api/v1/admin/restore',
+        method: 'POST',
+        body: { backupPath: 'dummy' },
       });
       assert.strictEqual(res.status, 403);
       assert.strictEqual(res.json?.error?.code, 'FORBIDDEN');
@@ -280,6 +300,46 @@ describe('Production Readiness & Server-Side Security Audit', () => {
       const latestLog = auditRes.json?.logs[0];
       assert.strictEqual(latestLog.action, 'DATABASE_BACKUP');
       assert.strictEqual(latestLog.actor_role, 'SAD');
+    });
+
+    test('SAD can restore operational store from backup snapshot (POST /api/v1/admin/restore)', async () => {
+      // 1. Create a baseline backup snapshot
+      const backupRes = await request({
+        path: '/api/v1/admin/backup',
+        method: 'POST',
+      });
+      assert.strictEqual(backupRes.status, 201);
+      const backupPath = backupRes.json.backupPath;
+
+      // 2. Perform restore
+      const restoreRes = await request({
+        path: '/api/v1/admin/restore',
+        method: 'POST',
+        body: { backupPath },
+      });
+      assert.strictEqual(restoreRes.status, 200);
+      assert.strictEqual(restoreRes.json?.success, true);
+      assert.ok(restoreRes.json?.restoredCounts?.routes > 0);
+
+      // 3. Verify audit log entry for restore
+      const auditRes = await request({
+        path: '/api/v1/audit-logs',
+        method: 'GET',
+      });
+      assert.strictEqual(auditRes.status, 200);
+      const latestLog = auditRes.json?.logs[0];
+      assert.strictEqual(latestLog.action, 'DATABASE_RESTORE');
+      assert.strictEqual(latestLog.actor_role, 'SAD');
+    });
+
+    test('Directory traversal path is rejected on restore (POST /api/v1/admin/restore)', async () => {
+      const res = await request({
+        path: '/api/v1/admin/restore',
+        method: 'POST',
+        body: { backupPath: '../../etc/passwd' },
+      });
+      assert.strictEqual(res.status, 400);
+      assert.strictEqual(res.json?.error?.code, 'RESTORE_FAILED');
     });
   });
 });

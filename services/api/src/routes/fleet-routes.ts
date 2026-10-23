@@ -850,6 +850,33 @@ export async function handleFleetApiRoutes(
     return true;
   }
 
+  // 14. System Store Backup Restoration (Spec Section 31.6 & Task P0-T14)
+  if (method === 'POST' && pathname === '/api/v1/admin/restore') {
+    const user = fleetDataStore.getCurrentUser();
+    if (user.role !== 'SAD') {
+      sendErrorResponse(res, 403, 'FORBIDDEN', 'Role Unauthorized: Only Super Administrators (SAD) can restore store backup snapshots.', requestId);
+      return true;
+    }
+    try {
+      const body = await parseJsonBody<{ backupPath: string }>(req);
+      if (!body.backupPath) {
+        sendErrorResponse(res, 400, 'BAD_REQUEST', 'Missing required parameter: backupPath', requestId);
+        return true;
+      }
+      const restoreResult = fleetDataStore.restoreBackup(body.backupPath);
+      if (!restoreResult.success) {
+        sendErrorResponse(res, 400, 'RESTORE_FAILED', restoreResult.error ?? 'Failed to restore store backup snapshot.', requestId);
+        return true;
+      }
+      logger.info('System store restored from backup snapshot by Super Admin', { backupPath: body.backupPath });
+      sendJsonResponse(res, 200, { success: true, restoredCounts: restoreResult.restoredCounts, request_id: requestId }, requestId);
+      return true;
+    } catch (err) {
+      sendErrorResponse(res, 500, 'INTERNAL_ERROR', (err as Error).message, requestId);
+      return true;
+    }
+  }
+
   // Unhandled by fleet routes
   return false;
 }

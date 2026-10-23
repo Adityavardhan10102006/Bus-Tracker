@@ -2015,6 +2015,47 @@ export class FleetDataStore
     }
   }
 
+  restoreBackup(backupPath: string): { success: boolean; error?: string; restoredCounts?: { routes: number; buses: number; devices: number } } {
+    try {
+      const resolvedBackup = path.resolve(backupPath);
+      const backupDir = path.resolve(path.dirname(this.persistencePath), 'backups');
+      if (!resolvedBackup.startsWith(backupDir)) {
+        return { success: false, error: 'Access denied: Backup path must reside within the authorized backups directory.' };
+      }
+      if (!fs.existsSync(resolvedBackup)) {
+        return { success: false, error: 'Backup snapshot file does not exist.' };
+      }
+      const raw = fs.readFileSync(resolvedBackup, 'utf-8');
+      const data = JSON.parse(raw);
+      if (!Array.isArray(data.routes) || !Array.isArray(data.buses) || !Array.isArray(data.devices)) {
+        return { success: false, error: 'Invalid backup snapshot schema: missing core fleet arrays.' };
+      }
+
+      fs.copyFileSync(resolvedBackup, this.persistencePath);
+      this.loadPersistedStore();
+
+      this.recordAuditLog(
+        this.currentUser.email,
+        this.currentUser.role,
+        'DATABASE_RESTORE',
+        'SYSTEM',
+        'STORE_RESTORE',
+        `Restored operational store from backup snapshot: ${path.basename(resolvedBackup)}`,
+      );
+
+      return {
+        success: true,
+        restoredCounts: {
+          routes: this.routes.length,
+          buses: this.buses.length,
+          devices: this.devices.length,
+        },
+      };
+    } catch (e) {
+      return { success: false, error: (e as Error).message };
+    }
+  }
+
   getDiagnostics(): Record<string, unknown> {
     const fileExists = fs.existsSync(this.persistencePath);
     let fileSize = 0;
@@ -2024,7 +2065,7 @@ export class FleetDataStore
       } catch (_) {}
     }
 
-    const liveBuses = this.getSnapshots().filter(b => b.state === 'LIVE_HW' || b.state === 'LIVE_PHONE');
+    const liveBuses = this.getSnapshots().filter(b => (b.state === 'LIVE_HW' || b.state === 'LIVE_PHONE') && !b.is_simulated);
     const staleBuses = this.getSnapshots().filter(b => b.state === 'STALE');
 
     return {
