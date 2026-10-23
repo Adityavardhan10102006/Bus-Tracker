@@ -14,8 +14,20 @@ export function renderAdminHtml(): string {
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+  <script>
+    (function(){
+      try {
+        var p = localStorage.getItem('vjit_theme_preference') || 'system';
+        var d = window.matchMedia('(prefers-color-scheme: dark)').matches;
+        var isDark = p === 'dark' || (p === 'system' && d);
+        document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light');
+        document.documentElement.classList.toggle('theme-dark', isDark);
+        document.documentElement.classList.toggle('theme-light', !isDark);
+      } catch(e) {}
+    })();
+  </script>
   <style>
-    :root {
+    :root, [data-theme="light"] {
       --brand-navy: #103754;
       --brand-navy-sub: #1E4E79;
       --brand-navy-dark: #0A2335;
@@ -25,6 +37,8 @@ export function renderAdminHtml(): string {
       --brand-red-light: #FEE2E2;
       --canvas-white: #FFFFFF;
       --canvas-light: #F8FAFC;
+      --canvas-card: #FFFFFF;
+      --canvas-elevated: #FFFFFF;
       --border-subtle: #E2E8F0;
       --border-strong: #CBD5E1;
       --text-primary: #0F172A;
@@ -38,6 +52,277 @@ export function renderAdminHtml(): string {
       --state-unavail-bg: #FEE2E2;
       --state-idle: #64748B;
       --state-idle-bg: #F1F5F9;
+      --input-bg: #FFFFFF;
+      --input-border: #CBD5E1;
+      --header-bg: #103754;
+      --sidebar-bg: #FFFFFF;
+      --main-bg: #F8FAFC;
+      --table-header-bg: #F8FAFC;
+      --table-row-hover: #F8FAFC;
+      --map-bg: #E2E8F0;
+      --shadow-sm: 0 1px 3px rgba(16, 55, 84, 0.05);
+      --shadow-md: 0 4px 6px -1px rgba(16, 55, 84, 0.08);
+    }
+
+    [data-theme="dark"] {
+      --brand-navy: #38BDF8;
+      --brand-navy-sub: #60A5FA;
+      --brand-navy-dark: #0B132B;
+      --brand-navy-light: #1E3A8A;
+      --brand-red: #EF4444;
+      --brand-red-dark: #DC2626;
+      --brand-red-light: #7F1D1D;
+      --canvas-white: #131F33;
+      --canvas-light: #0B132B;
+      --canvas-card: #131F33;
+      --canvas-elevated: #1E293B;
+      --border-subtle: #24354D;
+      --border-strong: #3B4F6D;
+      --text-primary: #F8FAFC;
+      --text-secondary: #CBD5E1;
+      --text-muted: #94A3B8;
+      --state-live: #22C55E;
+      --state-live-bg: #052E16;
+      --state-stale: #F59E0B;
+      --state-stale-bg: #451A03;
+      --state-unavail: #EF4444;
+      --state-unavail-bg: #450A0A;
+      --state-idle: #94A3B8;
+      --state-idle-bg: #1E293B;
+      --input-bg: #0F172A;
+      --input-border: #334155;
+      --header-bg: #0E2238;
+      --sidebar-bg: #131F33;
+      --main-bg: #0B132B;
+      --table-header-bg: #0F172A;
+      --table-row-hover: #1A2B42;
+      --map-bg: #0F172A;
+      --shadow-sm: 0 2px 6px rgba(0, 0, 0, 0.35);
+      --shadow-md: 0 4px 14px rgba(0, 0, 0, 0.55);
+    }
+
+    /* Smooth transitions */
+    body, .admin-navbar, .admin-sidebar, .admin-main-content, .counter-card, .data-table-container, .admin-modal-card, .table-search-input, .form-control, #telemetry-drawer {
+      transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, ::before, ::after {
+        transition-duration: 0.001ms !important;
+        animation-duration: 0.001ms !important;
+      }
+    }
+
+    /* Theme Switcher Header Component */
+    .theme-toggle-cluster {
+      display: inline-flex;
+      align-items: center;
+      background: rgba(255, 255, 255, 0.12);
+      border: 1px solid rgba(255, 255, 255, 0.25);
+      border-radius: 8px;
+      padding: 2px;
+      gap: 2px;
+    }
+    .theme-toggle-btn {
+      background: transparent;
+      border: none;
+      color: rgba(255, 255, 255, 0.7);
+      width: 28px;
+      height: 26px;
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      font-size: 11px;
+    }
+    .theme-toggle-btn:hover {
+      color: #FFFFFF;
+      background: rgba(255, 255, 255, 0.15);
+    }
+    .theme-toggle-btn.active {
+      background: #FFFFFF;
+      color: #103754;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+    }
+    [data-theme="dark"] .theme-toggle-btn.active {
+      background: #38BDF8;
+      color: #0B132B;
+    }
+
+    /* Dark Mode Component Overrides */
+    [data-theme="dark"] body {
+      background-color: var(--main-bg);
+      color: var(--text-primary);
+    }
+    [data-theme="dark"] .admin-navbar {
+      background: var(--header-bg);
+      border-bottom: 1px solid var(--border-subtle);
+    }
+    [data-theme="dark"] .admin-sidebar {
+      background: var(--sidebar-bg);
+      border-right: 1px solid var(--border-subtle);
+    }
+    [data-theme="dark"] .nav-link-btn {
+      color: var(--text-secondary);
+    }
+    [data-theme="dark"] .nav-link-btn:hover {
+      background: var(--canvas-elevated);
+      color: var(--text-primary);
+    }
+    [data-theme="dark"] .nav-link-btn.active {
+      background: rgba(56, 189, 248, 0.15);
+      color: #38BDF8;
+    }
+    [data-theme="dark"] .admin-main-content {
+      background: var(--main-bg);
+    }
+    [data-theme="dark"] .page-title h2 {
+      color: var(--text-primary);
+    }
+    [data-theme="dark"] .page-title p {
+      color: var(--text-secondary);
+    }
+    [data-theme="dark"] .counter-card {
+      background: var(--canvas-card);
+      border-color: var(--border-subtle);
+      box-shadow: var(--shadow-sm);
+    }
+    [data-theme="dark"] .counter-card-val {
+      color: var(--text-primary);
+    }
+    [data-theme="dark"] .data-table-container {
+      background: var(--canvas-card);
+      border-color: var(--border-subtle);
+    }
+    [data-theme="dark"] .table-toolbar {
+      border-color: var(--border-subtle);
+    }
+    [data-theme="dark"] .table-search-input {
+      background: var(--input-bg);
+      border-color: var(--input-border);
+      color: var(--text-primary);
+    }
+    [data-theme="dark"] .table-search-input:focus {
+      border-color: #38BDF8;
+    }
+    [data-theme="dark"] table.data-table th {
+      background: var(--table-header-bg);
+      color: var(--text-secondary);
+      border-color: var(--border-subtle);
+    }
+    [data-theme="dark"] table.data-table td {
+      color: var(--text-primary);
+      border-color: var(--border-subtle);
+    }
+    [data-theme="dark"] table.data-table tr:hover td {
+      background: var(--table-row-hover);
+    }
+    [data-theme="dark"] .btn-table-action {
+      background: transparent;
+      border-color: var(--border-strong);
+      color: var(--text-secondary);
+    }
+    [data-theme="dark"] .btn-table-action:hover {
+      background: var(--canvas-elevated);
+      color: #38BDF8;
+      border-color: #38BDF8;
+    }
+    [data-theme="dark"] .btn-table-danger {
+      color: #EF4444;
+      border-color: #7F1D1D;
+    }
+    [data-theme="dark"] .btn-table-danger:hover {
+      background: #450A0A;
+      color: #FCA5A5;
+      border-color: #DC2626;
+    }
+    [data-theme="dark"] .admin-modal-card {
+      background: var(--canvas-card);
+      border: 1px solid var(--border-subtle);
+    }
+    [data-theme="dark"] .modal-head {
+      background: var(--header-bg);
+      border-bottom: 1px solid var(--border-subtle);
+    }
+    [data-theme="dark"] .modal-body {
+      color: var(--text-primary);
+    }
+    [data-theme="dark"] .form-group label {
+      color: var(--text-primary);
+    }
+    [data-theme="dark"] .form-control {
+      background: var(--input-bg);
+      border-color: var(--input-border);
+      color: var(--text-primary);
+    }
+    [data-theme="dark"] .form-control:focus {
+      border-color: #38BDF8;
+      box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.25);
+    }
+    [data-theme="dark"] .modal-foot {
+      background: var(--input-bg);
+      border-color: var(--border-subtle);
+    }
+    [data-theme="dark"] .btn-secondary {
+      background: var(--canvas-elevated);
+      border-color: var(--border-strong);
+      color: var(--text-secondary);
+    }
+    [data-theme="dark"] .btn-primary {
+      background: #0284C7;
+      color: white;
+    }
+    [data-theme="dark"] .btn-primary:hover {
+      background: #0369A1;
+    }
+    [data-theme="dark"] .studio-map-pane {
+      background: var(--map-bg);
+      border-color: var(--border-strong);
+    }
+    [data-theme="dark"] .leaflet-tile-pane {
+      filter: brightness(0.65) invert(1) contrast(3.2) hue-rotate(200deg) saturate(0.28) brightness(0.75);
+    }
+    [data-theme="dark"] .studio-stop-row {
+      background: var(--canvas-card);
+      border-color: var(--border-subtle);
+      color: var(--text-primary);
+    }
+    [data-theme="dark"] .studio-stop-row:hover {
+      background: var(--canvas-elevated);
+    }
+    [data-theme="dark"] .studio-stop-seq {
+      background: #1E3A8A;
+      color: #38BDF8;
+    }
+    [data-theme="dark"] .studio-btn-icon {
+      background: var(--canvas-elevated);
+      border-color: var(--border-subtle);
+      color: var(--text-secondary);
+    }
+    [data-theme="dark"] .studio-btn-icon:hover:not(:disabled) {
+      background: #1E3A8A;
+      color: #38BDF8;
+      border-color: #38BDF8;
+    }
+    [data-theme="dark"] #telemetry-drawer {
+      background: var(--canvas-card) !important;
+      border-color: var(--border-subtle) !important;
+    }
+    [data-theme="dark"] #telemetry-drawer > div:first-child {
+      background: var(--header-bg) !important;
+      border-bottom: 1px solid var(--border-subtle);
+    }
+    [data-theme="dark"] #telemetry-drawer [style*="background:var(--canvas-light)"] {
+      background: var(--main-bg) !important;
+      border-color: var(--border-subtle) !important;
+    }
+    [data-theme="dark"] .leaflet-popup-content-wrapper,
+    [data-theme="dark"] .leaflet-popup-tip {
+      background: #1E293B;
+      color: #F8FAFC;
+      box-shadow: 0 4px 14px rgba(0,0,0,0.6);
     }
 
     /* Route Studio & Mapping Styles */
@@ -141,6 +426,8 @@ export function renderAdminHtml(): string {
       position: sticky;
       top: 0;
       z-index: 100;
+      flex-wrap: wrap;
+      gap: 12px;
     }
 
     .brand-section {
@@ -176,6 +463,7 @@ export function renderAdminHtml(): string {
       display: flex;
       align-items: center;
       gap: 16px;
+      flex-wrap: wrap;
     }
 
     .role-switcher-dropdown {
@@ -657,6 +945,17 @@ export function renderAdminHtml(): string {
           <option value="SEC">SEC • Campus Security (Read-Only)</option>
         </select>
       </div>
+      <div class="theme-toggle-cluster" role="radiogroup" aria-label="Console Theme">
+        <button type="button" class="theme-toggle-btn" data-theme-choice="light" data-theme-btn="light" aria-label="Light mode" title="Light mode">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>
+        </button>
+        <button type="button" class="theme-toggle-btn" data-theme-choice="system" data-theme-btn="system" aria-label="Follow device theme" title="System mode (Auto)">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect><line x1="8" y1="21" x2="16" y2="21"></line><line x1="12" y1="17" x2="12" y2="21"></line></svg>
+        </button>
+        <button type="button" class="theme-toggle-btn" data-theme-choice="dark" data-theme-btn="dark" aria-label="Dark mode" title="Dark mode">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
+        </button>
+      </div>
       <a href="/app" style="color:#93C5FD; font-size:12.5px; font-weight:600; text-decoration:none;">&larr; Student View</a>
       <a href="/" style="color:white; font-size:12.5px; font-weight:600; text-decoration:none;">Portal Home</a>
     </div>
@@ -1031,6 +1330,28 @@ export function renderAdminHtml(): string {
           <div class="page-title">
             <h2>System Configuration & Audit Log (ADM-09 / ADM-14)</h2>
             <p>Operational thresholds (Part I.5) and immutable administrative audit history.</p>
+          </div>
+        </div>
+
+        <!-- Console Appearance Preferences -->
+        <div style="background:var(--canvas-white); border:1px solid var(--border-subtle); border-radius:12px; padding:20px; margin-bottom:24px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+            <div>
+              <h3 style="font-family:'Outfit'; font-size:16px; color:var(--brand-navy); font-weight:700;">Console Appearance &amp; Visual Theme</h3>
+              <p style="font-size:12.5px; color:var(--text-secondary); margin-top:2px;">Customize transport control room appearance. Synchronizes automatically across all management workstations.</p>
+            </div>
+            <span id="admin-theme-badge" style="font-size:12px; font-weight:700; color:var(--brand-navy); background:rgba(56,189,248,0.15); padding:4px 12px; border-radius:12px;">System Mode</span>
+          </div>
+          <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:14px; max-width:640px;">
+            <button type="button" class="btn-secondary" data-theme-choice="light" data-theme-btn="light" style="display:flex; align-items:center; justify-content:center; gap:8px; padding:12px; font-weight:600; cursor:pointer;">
+              <span>☀️</span> Light Mode
+            </button>
+            <button type="button" class="btn-secondary" data-theme-choice="system" data-theme-btn="system" style="display:flex; align-items:center; justify-content:center; gap:8px; padding:12px; font-weight:600; cursor:pointer;">
+              <span>💻</span> System Mode
+            </button>
+            <button type="button" class="btn-secondary" data-theme-choice="dark" data-theme-btn="dark" style="display:flex; align-items:center; justify-content:center; gap:8px; padding:12px; font-weight:600; cursor:pointer;">
+              <span>🌙</span> Dark Mode
+            </button>
           </div>
         </div>
 
@@ -1628,11 +1949,92 @@ export function renderAdminHtml(): string {
       distanceMeters: null,
       hasUnsavedChanges: false,
       mapInstance: null,
+      tileLayer: null,
       polylineLayer: null,
       stopMarkers: [],
       pickCoordinatesMode: false,
       pickMarker: null
     };
+
+    function initAdminThemeSystem() {
+      const THEME_KEY = 'vjit_theme_preference';
+      function getPreference() {
+        return localStorage.getItem(THEME_KEY) || 'system';
+      }
+      function resolveEffectiveTheme(pref) {
+        if (pref === 'light') return 'light';
+        if (pref === 'dark') return 'dark';
+        return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+      }
+      function applyTheme(preference) {
+        const effective = resolveEffectiveTheme(preference);
+        document.documentElement.setAttribute('data-theme', effective);
+        document.documentElement.classList.toggle('theme-dark', effective === 'dark');
+        document.documentElement.classList.toggle('theme-light', effective === 'light');
+
+        // Update active state on all buttons matching preference
+        document.querySelectorAll('[data-theme-choice], [data-theme-btn]').forEach(btn => {
+          const choice = btn.getAttribute('data-theme-choice') || btn.getAttribute('data-theme-btn');
+          if (choice === preference) {
+            btn.classList.add('active');
+            btn.style.borderColor = effective === 'dark' ? '#38BDF8' : 'var(--brand-navy)';
+          } else {
+            btn.classList.remove('active');
+            btn.style.borderColor = '';
+          }
+        });
+
+        const badge = document.getElementById('admin-theme-badge');
+        if (badge) {
+          badge.textContent = preference === 'system' ? 'System Mode (Auto)' : (preference === 'dark' ? 'Dark Mode' : 'Light Mode');
+        }
+
+        // Update studio map tiles without changing map center/zoom or losing unsaved edits
+        updateAdminMapTileTheme(effective === 'dark');
+      }
+
+      function updateAdminMapTileTheme(isDark) {
+        if (!adminRouteStudio.mapInstance || !adminRouteStudio.tileLayer) return;
+        // Spec rule: If dark tile provider requires credentials (e.g. cartocdn dark_all/{z}/{x}/{y}{r}.png),
+        // retain reliable OpenStreetMap tiles with CSS tile-pane night filter to avoid breaking map or watermarks
+        const targetUrl = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
+        adminRouteStudio.tileLayer.setUrl(targetUrl);
+
+        if (adminRouteStudio.polylineLayer) {
+          const isFallback = adminRouteStudio.geometrySource === 'STRAIGHT_LINE_FALLBACK';
+          adminRouteStudio.polylineLayer.setStyle({
+            color: isFallback ? '#F59E0B' : (isDark ? '#38BDF8' : '#103754')
+          });
+        }
+      }
+
+      window.setThemePreference = function(pref) {
+        localStorage.setItem(THEME_KEY, pref);
+        applyTheme(pref);
+      };
+
+      document.addEventListener('click', (e) => {
+        const btn = e.target.closest('[data-theme-choice], [data-theme-btn]');
+        if (btn) {
+          const choice = btn.getAttribute('data-theme-choice') || btn.getAttribute('data-theme-btn');
+          if (choice) window.setThemePreference(choice);
+        }
+      });
+
+      window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+        if (getPreference() === 'system') {
+          applyTheme('system');
+        }
+      });
+
+      window.addEventListener('storage', (e) => {
+        if (e.key === THEME_KEY && e.newValue) {
+          applyTheme(e.newValue);
+        }
+      });
+
+      applyTheme(getPreference());
+    }
 
     function showFeedback(msg, isError = false) {
       const banner = document.getElementById('feedback-alert');
@@ -2104,9 +2506,16 @@ export function renderAdminHtml(): string {
           attributionControl: false
         }).setView([17.3616, 78.3245], 13);
 
-        const tileLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-          maxZoom: 18
+        const isDarkNow = (document.documentElement.getAttribute('data-theme') || 'light') === 'dark';
+        // Spec rule: If dark tile provider requires credentials (e.g. cartocdn dark_all/{z}/{x}/{y}{r}.png),
+        // retain reliable OpenStreetMap tiles with CSS tile-pane night filter to avoid breaking map or watermarks
+        const initialTileUrl = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
+
+        const tileLayer = L.tileLayer(initialTileUrl, {
+          maxZoom: 18,
+          subdomains: 'abc'
         }).addTo(adminRouteStudio.mapInstance);
+        adminRouteStudio.tileLayer = tileLayer;
 
         tileLayer.on('tileerror', () => {
           const w = document.getElementById('studio-tiles-warning');
@@ -2171,10 +2580,12 @@ export function renderAdminHtml(): string {
       const isFallback = !hasRoadPoly || adminRouteStudio.geometrySource === 'STRAIGHT_LINE_FALLBACK';
 
       if (polyCoords.length >= 2) {
+        const isDarkNow = (document.documentElement.getAttribute('data-theme') || 'light') === 'dark';
+        const routeColor = isFallback ? '#F59E0B' : (isDarkNow ? '#38BDF8' : '#103754');
         adminRouteStudio.polylineLayer = L.polyline(polyCoords, {
-          color: isFallback ? '#D97706' : '#103754',
+          color: routeColor,
           weight: isFallback ? 3 : 5,
-          opacity: 0.85,
+          opacity: 0.9,
           dashArray: isFallback ? '6, 6' : undefined
         }).addTo(adminRouteStudio.mapInstance);
 
@@ -2187,9 +2598,12 @@ export function renderAdminHtml(): string {
 
       stops.forEach((s, idx) => {
         const isLast = idx === stops.length - 1;
+        const isDarkNow = (document.documentElement.getAttribute('data-theme') || 'light') === 'dark';
+        const stopBg = isLast ? '#E51F35' : (isDarkNow ? '#2563EB' : '#103754');
+        const stopBorder = isDarkNow ? '#0F172A' : '#FFFFFF';
         const icon = L.divIcon({
           className: 'studio-stop-marker',
-          html: '<div style="background:' + (isLast ? '#E51F35' : '#103754') + '; color:white; width:24px; height:24px; border-radius:50%; border:2px solid white; box-shadow:0 2px 6px rgba(0,0,0,0.3); display:flex; align-items:center; justify-content:center; font-weight:700; font-size:11px;">' + (idx + 1) + '</div>',
+          html: '<div style="background:' + stopBg + '; color:white; width:24px; height:24px; border-radius:50%; border:2px solid ' + stopBorder + '; box-shadow:0 2px 6px rgba(0,0,0,0.4); display:flex; align-items:center; justify-content:center; font-weight:700; font-size:11px;">' + (idx + 1) + '</div>',
           iconSize: [24, 24],
           iconAnchor: [12, 12]
         });
@@ -3050,6 +3464,9 @@ export function renderAdminHtml(): string {
       adminState.devicesSearchQuery = e.target.value.trim();
       renderDevicesTable();
     };
+
+    // Initialize Theme System (Light, Dark, System)
+    initAdminThemeSystem();
 
     // Polling
     setInterval(loadAdminData, 10000);

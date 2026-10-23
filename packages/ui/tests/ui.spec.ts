@@ -7,6 +7,8 @@ import {
   ALL_NAVIGATION_ITEMS,
   getStateBadgeDescriptor,
   VJIT_COLORS,
+  VJIT_DARK_COLORS,
+  resolveTheme,
 } from '../dist/index.js';
 
 describe('UI: WCAG 2.1 Contrast Rules & Institutional Colors', () => {
@@ -80,5 +82,42 @@ describe('UI: Tracking Integrity State Badges', () => {
 
     const notRunning = getStateBadgeDescriptor('NOT_RUNNING');
     assert.equal(notRunning.label, 'Not running');
+  });
+});
+
+describe('UI: Dark Mode & Light Mode Theme System', () => {
+  test('resolves light, dark, and system theme preferences accurately', () => {
+    // Explicit preferences
+    assert.equal(resolveTheme('light', false), 'light');
+    assert.equal(resolveTheme('light', true), 'light');
+    assert.equal(resolveTheme('dark', false), 'dark');
+    assert.equal(resolveTheme('dark', true), 'dark');
+
+    // System mode follows OS appearance
+    assert.equal(resolveTheme('system', false), 'light');
+    assert.equal(resolveTheme('system', true), 'dark');
+  });
+
+  test('verifies WCAG 2.1 AA high contrast for Dark Mode text and surfaces', () => {
+    // Primary Text (#F8FAFC) on Dark Page Canvas (#0F172A)
+    const primaryCheck = validateColorPairing(VJIT_DARK_COLORS.textPrimary, VJIT_DARK_COLORS.canvasLight);
+    assert.equal(primaryCheck.passes, true);
+    assert.ok(primaryCheck.ratio >= 13.0, `Expected ratio >= 13.0, got ${primaryCheck.ratio}`);
+
+    // Secondary Text (#CBD5E1) on Dark Card Surface (#1E293B)
+    const secondaryCheck = validateColorPairing(VJIT_DARK_COLORS.textSecondary, VJIT_DARK_COLORS.canvasCard);
+    assert.equal(secondaryCheck.passes, true);
+    assert.ok(secondaryCheck.ratio >= 7.0, `Expected ratio >= 7.0, got ${secondaryCheck.ratio}`);
+
+    // Muted Text (#94A3B8) on Dark Card Surface (#1E293B) - must meet 4.5:1 AA
+    const mutedCheck = validateColorPairing(VJIT_DARK_COLORS.textMuted, VJIT_DARK_COLORS.canvasCard);
+    assert.equal(mutedCheck.passes, true);
+    assert.ok(mutedCheck.ratio >= 4.5, `Expected ratio >= 4.5, got ${mutedCheck.ratio}`);
+  });
+
+  test('verifies button text contrast in dark theme', () => {
+    // White text on dark mode brand red (#EF4444)
+    const redBtnCheck = validateColorPairing('#FFFFFF', VJIT_DARK_COLORS.brandRed, true);
+    assert.ok(redBtnCheck.ratio >= 3.5, `Expected button ratio >= 3.5, got ${redBtnCheck.ratio}`);
   });
 });

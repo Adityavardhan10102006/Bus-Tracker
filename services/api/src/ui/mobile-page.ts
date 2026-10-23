@@ -20,15 +20,31 @@ export function renderMobileHtml(): string {
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+  <script>
+    (function(){
+      try {
+        var p = localStorage.getItem('vjit_theme_preference') || 'system';
+        var d = window.matchMedia('(prefers-color-scheme: dark)').matches;
+        var isDark = p === 'dark' || (p === 'system' && d);
+        document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light');
+        document.documentElement.classList.toggle('theme-dark', isDark);
+        document.documentElement.classList.toggle('theme-light', !isDark);
+      } catch(e) {}
+    })();
+  </script>
   <style>
-    :root {
+    :root, [data-theme="light"] {
       --brand-navy: #103754;
       --brand-navy-sub: #1E4E79;
       --brand-navy-dark: #0A2335;
       --brand-navy-light: #E0F2FE;
       --brand-red: #E51F35;
+      --brand-red-dark: #B91C1C;
+      --brand-red-light: #FEE2E2;
       --canvas-white: #FFFFFF;
       --canvas-light: #F8FAFC;
+      --canvas-card: #FFFFFF;
+      --canvas-elevated: #FFFFFF;
       --border-subtle: #E2E8F0;
       --border-strong: #CBD5E1;
       --text-primary: #0F172A;
@@ -44,6 +60,252 @@ export function renderMobileHtml(): string {
       --state-idle-bg: #F1F5F9;
       --demo-purple: #7C3AED;
       --demo-purple-bg: #F3E8FF;
+      --input-bg: #FFFFFF;
+      --input-border: #CBD5E1;
+      --header-bg: #103754;
+      --card-bg: #FFFFFF;
+      --map-bg: #E2E8F0;
+      --app-outer-bg: #0F172A;
+      --shadow-sm: 0 2px 6px rgba(16, 55, 84, 0.05);
+      --shadow-md: 0 4px 12px rgba(16, 55, 84, 0.12);
+    }
+
+    [data-theme="dark"] {
+      --brand-navy: #38BDF8;
+      --brand-navy-sub: #60A5FA;
+      --brand-navy-dark: #0B132B;
+      --brand-navy-light: #1E3A8A;
+      --brand-red: #EF4444;
+      --brand-red-dark: #DC2626;
+      --brand-red-light: #7F1D1D;
+      --canvas-white: #1E293B;
+      --canvas-light: #0B132B;
+      --canvas-card: #1E293B;
+      --canvas-elevated: #243247;
+      --border-subtle: #334155;
+      --border-strong: #475569;
+      --text-primary: #F8FAFC;
+      --text-secondary: #CBD5E1;
+      --text-muted: #94A3B8;
+      --state-live: #22C55E;
+      --state-live-bg: #052E16;
+      --state-stale: #F59E0B;
+      --state-stale-bg: #451A03;
+      --state-unavail: #EF4444;
+      --state-unavail-bg: #450A0A;
+      --state-idle: #94A3B8;
+      --state-idle-bg: #1E293B;
+      --demo-purple: #C084FC;
+      --demo-purple-bg: #3B0764;
+      --input-bg: #0F172A;
+      --input-border: #475569;
+      --header-bg: #0E2238;
+      --card-bg: #1E293B;
+      --map-bg: #0F172A;
+      --app-outer-bg: #030712;
+      --shadow-sm: 0 2px 6px rgba(0, 0, 0, 0.35);
+      --shadow-md: 0 4px 14px rgba(0, 0, 0, 0.55);
+    }
+
+    /* Smooth theme transitions */
+    body, .app-viewport, header, .content-area, .bus-card-vertical, .tab-bar, .modal-card, .search-input, .route-chip, .timeline-container, .map-ctrl-btn {
+      transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, ::before, ::after {
+        transition-duration: 0.001ms !important;
+        animation-duration: 0.001ms !important;
+      }
+    }
+
+    /* Theme Switcher Header Component */
+    .theme-toggle-cluster {
+      display: inline-flex;
+      align-items: center;
+      background: rgba(255, 255, 255, 0.12);
+      border: 1px solid rgba(255, 255, 255, 0.25);
+      border-radius: 8px;
+      padding: 2px;
+      gap: 2px;
+    }
+    .theme-toggle-btn {
+      background: transparent;
+      border: none;
+      color: rgba(255, 255, 255, 0.7);
+      width: 26px;
+      height: 24px;
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      font-size: 11px;
+    }
+    .theme-toggle-btn:hover {
+      color: #FFFFFF;
+      background: rgba(255, 255, 255, 0.15);
+    }
+    .theme-toggle-btn.active {
+      background: #FFFFFF;
+      color: #103754;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+    }
+    [data-theme="dark"] .theme-toggle-btn.active {
+      background: #38BDF8;
+      color: #0B132B;
+    }
+
+    /* Dark theme specific component enhancements */
+    [data-theme="dark"] body {
+      background-color: var(--app-outer-bg);
+    }
+    [data-theme="dark"] header {
+      background: var(--header-bg);
+      border-bottom: 1px solid var(--border-subtle);
+    }
+    [data-theme="dark"] .home-greeting-card {
+      background: linear-gradient(135deg, #132B45 0%, #0E2238 100%);
+      border: 1px solid var(--border-subtle);
+    }
+    [data-theme="dark"] .search-input {
+      background: var(--input-bg);
+      border-color: var(--input-border);
+      color: var(--text-primary);
+    }
+    [data-theme="dark"] .search-input:focus {
+      border-color: #38BDF8;
+      box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.25);
+    }
+    [data-theme="dark"] .route-chip {
+      background: var(--canvas-card);
+      border-color: var(--border-subtle);
+      color: var(--text-secondary);
+    }
+    [data-theme="dark"] .route-chip.active {
+      background: #1E3A8A;
+      border-color: #38BDF8;
+      color: #93C5FD;
+    }
+    [data-theme="dark"] .bus-card-vertical {
+      background: var(--canvas-card);
+      border-color: var(--border-subtle);
+      box-shadow: var(--shadow-sm);
+    }
+    [data-theme="dark"] .bus-card-vertical:hover {
+      border-color: #38BDF8;
+      box-shadow: var(--shadow-md);
+    }
+    [data-theme="dark"] .bus-id-badge {
+      background: #1E3A8A;
+      color: #38BDF8;
+    }
+    [data-theme="dark"] .bus-metrics-strip {
+      background: var(--canvas-light);
+    }
+    [data-theme="dark"] .metric-strip-item-val {
+      color: #38BDF8;
+    }
+    [data-theme="dark"] .bus-card-action-bar {
+      border-color: var(--border-subtle);
+    }
+    [data-theme="dark"] .btn-track-action {
+      background: #1E4E79;
+    }
+    [data-theme="dark"] .btn-track-action:hover {
+      background: #2563EB;
+    }
+    [data-theme="dark"] .detail-top-nav {
+      background: var(--canvas-card);
+      border-color: var(--border-subtle);
+    }
+    [data-theme="dark"] .btn-back-to-list {
+      color: #38BDF8;
+    }
+    [data-theme="dark"] .btn-back-to-list:hover {
+      background: rgba(56, 189, 248, 0.15);
+    }
+    [data-theme="dark"] #detail-geometry-notice {
+      background: var(--canvas-light);
+      border-color: var(--border-subtle);
+      color: var(--text-primary);
+    }
+    [data-theme="dark"] .map-tracker-container {
+      background: var(--map-bg);
+    }
+    [data-theme="dark"] .leaflet-tile-pane {
+      filter: brightness(0.65) invert(1) contrast(3.2) hue-rotate(200deg) saturate(0.28) brightness(0.75);
+    }
+    [data-theme="dark"] .map-ctrl-btn {
+      background: var(--canvas-card);
+      border-color: var(--border-strong);
+      color: var(--text-primary);
+      box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+    }
+    [data-theme="dark"] .map-ctrl-btn:hover {
+      background: var(--canvas-elevated);
+      color: #38BDF8;
+    }
+    [data-theme="dark"] .timeline-container {
+      background: var(--canvas-card);
+      border-color: var(--border-subtle);
+    }
+    [data-theme="dark"] .timeline-title {
+      color: var(--text-primary);
+    }
+    [data-theme="dark"] .stop-dot {
+      background: var(--canvas-card);
+      border-color: var(--border-strong);
+    }
+    [data-theme="dark"] .stop-timeline-list::before {
+      background: var(--border-subtle);
+    }
+    [data-theme="dark"] .stop-item-name {
+      color: #F8FAFC;
+    }
+    [data-theme="dark"] .stop-item-meta {
+      color: #94A3B8;
+    }
+    [data-theme="dark"] .bus-corridor-title {
+      color: #F8FAFC;
+    }
+    [data-theme="dark"] .bus-reg-label {
+      color: #94A3B8;
+    }
+    [data-theme="dark"] .tab-bar {
+      background: var(--canvas-card);
+      border-color: var(--border-subtle);
+    }
+    [data-theme="dark"] .tab-btn.active {
+      color: #38BDF8;
+    }
+    [data-theme="dark"] .modal-card {
+      background: var(--canvas-card);
+      border: 1px solid var(--border-subtle);
+      color: var(--text-primary);
+    }
+    [data-theme="dark"] .modal-card h3 {
+      color: var(--text-primary) !important;
+    }
+    [data-theme="dark"] .btn-close-modal {
+      background: var(--border-subtle);
+      color: var(--text-secondary);
+    }
+    [data-theme="dark"] .role-select-item {
+      background: var(--canvas-light);
+      border-color: var(--border-subtle) !important;
+      color: var(--text-primary);
+    }
+    [data-theme="dark"] .role-select-item.active {
+      border-color: #38BDF8 !important;
+      background: rgba(56, 189, 248, 0.1);
+    }
+    [data-theme="dark"] .leaflet-popup-content-wrapper,
+    [data-theme="dark"] .leaflet-popup-tip {
+      background: #1E293B;
+      color: #F8FAFC;
+      box-shadow: 0 4px 14px rgba(0,0,0,0.6);
     }
 
     * {
@@ -290,7 +552,7 @@ export function renderMobileHtml(): string {
     }
 
     .route-chip {
-      background: white;
+      background: var(--canvas-card);
       border: 1px solid var(--border-subtle);
       color: var(--text-secondary);
       padding: 5px 12px;
@@ -336,7 +598,7 @@ export function renderMobileHtml(): string {
     }
 
     .bus-card-vertical {
-      background: white;
+      background: var(--canvas-card);
       border: 1px solid var(--border-subtle);
       border-radius: 14px;
       padding: 14px;
@@ -477,7 +739,7 @@ export function renderMobileHtml(): string {
 
     /* Bus Detail Screen Styling */
     .detail-top-nav {
-      background: white;
+      background: var(--canvas-card);
       padding: 10px 14px;
       border-bottom: 1px solid var(--border-subtle);
       display: flex;
@@ -560,7 +822,7 @@ export function renderMobileHtml(): string {
     }
 
     .map-ctrl-btn {
-      background: white;
+      background: var(--canvas-card);
       border: 1px solid var(--border-strong);
       color: var(--brand-navy);
       width: 34px;
@@ -576,7 +838,7 @@ export function renderMobileHtml(): string {
 
     /* Timeline Stops */
     .timeline-container {
-      background: white;
+      background: var(--canvas-card);
       padding: 16px;
       border-top: 1px solid var(--border-subtle);
     }
@@ -585,7 +847,7 @@ export function renderMobileHtml(): string {
       font-family: 'Outfit', sans-serif;
       font-size: 14px;
       font-weight: 700;
-      color: var(--brand-navy);
+      color: var(--text-primary);
       margin-bottom: 12px;
       display: flex;
       align-items: center;
@@ -782,6 +1044,17 @@ export function renderMobileHtml(): string {
         </div>
       </div>
       <div class="header-actions">
+        <div class="theme-toggle-cluster" role="radiogroup" aria-label="Appearance Theme">
+          <button type="button" class="theme-toggle-btn" data-theme-choice="light" data-theme-btn="light" aria-label="Light mode" title="Light mode">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>
+          </button>
+          <button type="button" class="theme-toggle-btn" data-theme-choice="system" data-theme-btn="system" aria-label="Follow device theme" title="System mode (Auto)">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect><line x1="8" y1="21" x2="16" y2="21"></line><line x1="12" y1="17" x2="12" y2="21"></line></svg>
+          </button>
+          <button type="button" class="theme-toggle-btn" data-theme-choice="dark" data-theme-btn="dark" aria-label="Dark mode" title="Dark mode">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
+          </button>
+        </div>
         <button class="role-badge" id="btn-role-trigger">
           <span id="role-text">STU</span>
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
@@ -899,10 +1172,10 @@ export function renderMobileHtml(): string {
         </div>
 
         <!-- Bus Details Strip -->
-        <div style="background:white; padding:14px; border-bottom:1px solid var(--border-subtle);">
+        <div class="detail-bus-card" style="background:var(--canvas-card); padding:14px; border-bottom:1px solid var(--border-subtle);">
           <div style="display:flex; justify-content:space-between; align-items:flex-start;">
             <div>
-              <div style="font-family:'Outfit'; font-size:18px; font-weight:700; color:var(--brand-navy);" id="detail-bus-num">Bus 12</div>
+              <div style="font-family:'Outfit'; font-size:18px; font-weight:700; color:var(--text-primary);" id="detail-bus-num">Bus 12</div>
               <div style="font-size:12.5px; color:var(--text-secondary); margin-top:2px;" id="detail-route-name">Route 12: Mehdipatnam Express</div>
             </div>
             <div style="text-align:right;">
@@ -914,17 +1187,18 @@ export function renderMobileHtml(): string {
           <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:8px; margin-top:12px; background:var(--canvas-light); border-radius:10px; padding:10px; text-align:center;">
             <div>
               <div style="font-size:10px; text-transform:uppercase; color:var(--text-muted); font-weight:600;">Registration</div>
-              <div style="font-weight:700; font-size:12px; color:var(--brand-navy);" id="detail-reg-num">TS 09 UB 4412</div>
+              <div style="font-weight:700; font-size:12px; color:var(--text-primary);" id="detail-reg-num">TS 09 UB 4412</div>
             </div>
             <div>
               <div style="font-size:10px; text-transform:uppercase; color:var(--text-muted); font-weight:600;">Speed</div>
-              <div style="font-weight:700; font-size:12px; color:var(--brand-navy);" id="detail-speed-val">38 km/h</div>
+              <div style="font-weight:700; font-size:12px; color:var(--text-primary);" id="detail-speed-val">38 km/h</div>
             </div>
             <div>
               <div style="font-size:10px; text-transform:uppercase; color:var(--text-muted); font-weight:600;">Next Arrival</div>
               <div style="font-weight:700; font-size:12px; color:var(--state-live);" id="detail-eta-val">5 mins</div>
             </div>
-          </div>        <!-- Timeline Stops & Arrival Estimates -->
+          </div>
+        </div>        <!-- Timeline Stops & Arrival Estimates -->
         <div class="timeline-container">
           <div class="timeline-title">
             <span>Route Stops & Arrival Estimates</span>
@@ -1064,6 +1338,29 @@ export function renderMobileHtml(): string {
           </div>
         </div>
 
+        <!-- Appearance & Theme Preferences -->
+        <div style="background:var(--canvas-white); border:1px solid var(--border-subtle); border-radius:12px; padding:16px; margin-bottom:16px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+            <div style="font-family:'Outfit'; font-size:14px; font-weight:700; color:var(--brand-navy);">Appearance &amp; Theme</div>
+            <span id="theme-status-label" style="font-size:11px; font-weight:600; color:var(--brand-navy); background:var(--brand-navy-light); padding:2px 8px; border-radius:12px;">System (Auto)</span>
+          </div>
+          <p style="font-size:12px; color:var(--text-secondary); margin-bottom:12px;">Comfortable daytime and nighttime transit views with automatic sync.</p>
+          <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:8px;" id="profile-theme-grid">
+            <button type="button" class="profile-theme-btn" data-theme-choice="light" data-theme-btn="light" style="padding:10px 6px; border-radius:8px; border:1px solid var(--border-subtle); background:var(--canvas-light); color:var(--text-primary); font-size:12px; font-weight:600; cursor:pointer; display:flex; flex-direction:column; align-items:center; gap:3px;">
+              <span>☀️ Light</span>
+              <span style="font-size:10px; color:var(--text-muted); font-weight:400;">Day</span>
+            </button>
+            <button type="button" class="profile-theme-btn" data-theme-choice="system" data-theme-btn="system" style="padding:10px 6px; border-radius:8px; border:1px solid var(--border-subtle); background:var(--canvas-light); color:var(--text-primary); font-size:12px; font-weight:600; cursor:pointer; display:flex; flex-direction:column; align-items:center; gap:3px;">
+              <span>💻 System</span>
+              <span style="font-size:10px; color:var(--text-muted); font-weight:400;">Auto</span>
+            </button>
+            <button type="button" class="profile-theme-btn" data-theme-choice="dark" data-theme-btn="dark" style="padding:10px 6px; border-radius:8px; border:1px solid var(--border-subtle); background:var(--canvas-light); color:var(--text-primary); font-size:12px; font-weight:600; cursor:pointer; display:flex; flex-direction:column; align-items:center; gap:3px;">
+              <span>🌙 Dark</span>
+              <span style="font-size:10px; color:var(--text-muted); font-weight:400;">Night</span>
+            </button>
+          </div>
+        </div>
+
         <!-- Notification & Delay Preferences -->
         <div style="background:var(--canvas-white); border:1px solid var(--border-subtle); border-radius:12px; padding:16px; margin-bottom:16px;">
           <h3 style="font-family:'Outfit'; font-size:14px; font-weight:700; color:var(--brand-navy); margin-bottom:10px;">Transit Notification Preferences</h3>
@@ -1198,14 +1495,101 @@ export function renderMobileHtml(): string {
       searchQuery: '',
       isFallbackView: false,
       mapInstance: null,
+      tileLayer: null,
       busMarker: null,
       routePolyline: null,
       stopMarkers: [],
       userInteractedWithMap: false,
       currentRenderedRouteId: null,
-      lastRenderedStopCount: 0
+      lastRenderedStopCount: 0,
+      themePreference: localStorage.getItem('vjit_theme_preference') || 'system',
+      resolvedTheme: 'light'
     };
     window.appState = appState;
+
+    function initThemeSystem() {
+      const THEME_KEY = 'vjit_theme_preference';
+      function getPreference() {
+        return localStorage.getItem(THEME_KEY) || 'system';
+      }
+      function resolveEffectiveTheme(pref) {
+        if (pref === 'light') return 'light';
+        if (pref === 'dark') return 'dark';
+        return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+      }
+      function applyTheme(preference) {
+        appState.themePreference = preference;
+        const effective = resolveEffectiveTheme(preference);
+        appState.resolvedTheme = effective;
+        document.documentElement.setAttribute('data-theme', effective);
+        document.documentElement.classList.toggle('theme-dark', effective === 'dark');
+        document.documentElement.classList.toggle('theme-light', effective === 'light');
+        
+        // Update header and settings buttons
+        document.querySelectorAll('[data-theme-choice], [data-theme-btn]').forEach(btn => {
+          const choice = btn.getAttribute('data-theme-choice') || btn.getAttribute('data-theme-btn');
+          if (choice === preference) {
+            btn.classList.add('active');
+            btn.style.borderColor = effective === 'dark' ? '#38BDF8' : 'var(--brand-navy)';
+          } else {
+            btn.classList.remove('active');
+            btn.style.borderColor = '';
+          }
+        });
+        const lbl = document.getElementById('theme-status-label');
+        if (lbl) {
+          lbl.textContent = preference === 'system' ? 'System (Auto)' : (preference === 'dark' ? 'Dark Mode' : 'Light Mode');
+        }
+
+        // Seamless tile layer swap without viewport shift
+        updateMapTileTheme(effective === 'dark');
+      }
+
+      function updateMapTileTheme(isDark) {
+        if (!appState.mapInstance || !appState.tileLayer) return;
+        // Spec rule: If dark tile provider requires credentials (e.g. cartocdn dark_all/{z}/{x}/{y}{r}.png),
+        // retain reliable OpenStreetMap tiles with CSS tile-pane night filter to avoid breaking map or watermarks
+        const targetUrl = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
+        appState.tileLayer.setUrl(targetUrl);
+        
+        // Also update polyline color if present
+        if (appState.routePolyline) {
+          const bus = appState.buses.find(b => b.id === appState.selectedBusId);
+          const route = bus ? appState.routes.find(r => r.id === bus.route_id) : null;
+          const isFallback = route && route.geometry_source === 'STRAIGHT_LINE_FALLBACK';
+          appState.routePolyline.setStyle({
+            color: isFallback ? '#F59E0B' : (isDark ? '#38BDF8' : '#103754')
+          });
+        }
+      }
+
+      window.setThemePreference = function(pref) {
+        localStorage.setItem(THEME_KEY, pref);
+        applyTheme(pref);
+      };
+
+      document.addEventListener('click', (e) => {
+        const btn = e.target.closest('[data-theme-choice], [data-theme-btn]');
+        if (btn) {
+          const choice = btn.getAttribute('data-theme-choice') || btn.getAttribute('data-theme-btn');
+          if (choice) window.setThemePreference(choice);
+        }
+      });
+
+      window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+        if (getPreference() === 'system') {
+          applyTheme('system');
+        }
+      });
+
+      window.addEventListener('storage', (e) => {
+        if (e.key === THEME_KEY && e.newValue) {
+          applyTheme(e.newValue);
+        }
+      });
+
+      applyTheme(getPreference());
+    }
 
     function saveMobileMapState() {
       try {
@@ -1580,9 +1964,16 @@ export function renderMobileHtml(): string {
           attributionControl: false
         }).setView(initialCenter, initialZoom);
 
-        const tileLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-          maxZoom: 18
+        const isDarkInitial = (document.documentElement.getAttribute('data-theme') || appState.resolvedTheme) === 'dark';
+        // Spec rule: If dark tile provider requires credentials (e.g. cartocdn dark_all/{z}/{x}/{y}{r}.png),
+        // retain reliable OpenStreetMap tiles with CSS tile-pane night filter to avoid breaking map or watermarks
+        const initialTileUrl = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
+
+        const tileLayer = L.tileLayer(initialTileUrl, {
+          maxZoom: 18,
+          subdomains: 'abc'
         }).addTo(appState.mapInstance);
+        appState.tileLayer = tileLayer;
 
         tileLayer.on('tileerror', () => {
           const warn = document.getElementById('map-tiles-warning');
@@ -1652,19 +2043,23 @@ export function renderMobileHtml(): string {
           }
 
           if (polyPoints.length > 0) {
+            const isDarkNow = (document.documentElement.getAttribute('data-theme') || appState.resolvedTheme) === 'dark';
+            const routeLineColor = isFallback ? '#F59E0B' : (isDarkNow ? '#38BDF8' : '#103754');
             appState.routePolyline = L.polyline(polyPoints, {
-              color: isFallback ? '#D97706' : '#103754',
+              color: routeLineColor,
               weight: isFallback ? 3 : 5,
-              opacity: 0.85,
+              opacity: 0.9,
               dashArray: isFallback ? '6, 6' : undefined
             }).addTo(appState.mapInstance);
           }
 
           stops.forEach((s, idx) => {
             const isDest = idx === stops.length - 1;
+            const isDarkNow = (document.documentElement.getAttribute('data-theme') || appState.resolvedTheme) === 'dark';
+            const stopBorder = isDarkNow ? '#0F172A' : '#FFFFFF';
             const stopIcon = L.divIcon({
               className: 'custom-stop-pin',
-              html: '<div style="background:' + (isDest ? '#E51F35' : '#1E4E79') + '; color:white; width:20px; height:20px; border-radius:50%; border:2px solid white; box-shadow:0 1px 4px rgba(0,0,0,0.3); display:flex; align-items:center; justify-content:center; font-size:10px; font-weight:700;">' + (idx + 1) + '</div>',
+              html: '<div style="background:' + (isDest ? '#E51F35' : (isDarkNow ? '#2563EB' : '#1E4E79')) + '; color:white; width:20px; height:20px; border-radius:50%; border:2px solid ' + stopBorder + '; box-shadow:0 1px 4px rgba(0,0,0,0.4); display:flex; align-items:center; justify-content:center; font-size:10px; font-weight:700;">' + (idx + 1) + '</div>',
               iconSize: [20, 20],
               iconAnchor: [10, 10]
             });
@@ -1836,7 +2231,7 @@ export function renderMobileHtml(): string {
       list.innerHTML = '';
       appState.routes.forEach(r => {
         const card = document.createElement('div');
-        card.style.cssText = 'background:white; border:1px solid var(--border-subtle); border-radius:12px; padding:14px; box-shadow:0 1px 4px rgba(0,0,0,0.05); cursor:pointer; transition:transform 0.15s, border-color 0.15s;';
+        card.style.cssText = 'background:var(--canvas-card); border:1px solid var(--border-subtle); border-radius:12px; padding:14px; box-shadow:0 1px 4px rgba(0,0,0,0.05); cursor:pointer; transition:transform 0.15s, border-color 0.15s;';
         card.onmouseenter = () => { card.style.borderColor = 'var(--brand-navy)'; };
         card.onmouseleave = () => { card.style.borderColor = 'var(--border-subtle)'; };
         card.onclick = () => openRouteDetail(r.id);
@@ -1956,7 +2351,7 @@ export function renderMobileHtml(): string {
       list.innerHTML = '';
       appState.alerts.forEach(a => {
         const card = document.createElement('div');
-        card.style.cssText = 'background:white; border:1px solid var(--border-subtle); border-radius:12px; padding:14px; box-shadow:0 1px 4px rgba(0,0,0,0.05);';
+        card.style.cssText = 'background:var(--canvas-card); border:1px solid var(--border-subtle); border-radius:12px; padding:14px; box-shadow:0 1px 4px rgba(0,0,0,0.05);';
         card.innerHTML = '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">' +
           '<span class="status-badge ' + (a.severity === 'CRITICAL' ? 'badge-unavail' : (a.severity === 'WARNING' ? 'badge-stale' : 'badge-idle')) + '">' + a.severity + '</span>' +
           '<span style="font-size:11px; color:var(--text-muted);">' + new Date(a.created_at).toLocaleTimeString() + '</span>' +
@@ -2162,6 +2557,9 @@ export function renderMobileHtml(): string {
         if (appState.mapInstance) appState.mapInstance.invalidateSize();
       }, 200);
     });
+
+    // Initialize theme system (Light, Dark, System)
+    initThemeSystem();
 
     // Polling every 10s
     setInterval(loadAllData, 10000);

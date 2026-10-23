@@ -44,7 +44,7 @@ export function getServiceWorkerJs(): string {
  * Live telemetry and authenticated user credentials are strictly NOT cached.
  */
 
-const CACHE_NAME = 'vjit-tracker-shell-v1';
+const CACHE_NAME = 'vjit-tracker-shell-v2';
 const STATIC_ASSETS = [
   '/app',
   '/assets/vjit-logo.png',
@@ -85,6 +85,24 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
+  // Network-first strategy for HTML navigation requests with offline cache fallback
+  if (event.request.mode === 'navigate' || url.pathname === '/app') {
+    event.respondWith(
+      fetch(event.request)
+        .then((networkResponse) => {
+          if (networkResponse && networkResponse.status === 200) {
+            const responseToCache = networkResponse.clone();
+            caches.open(CACHE_NAME).then((cache) => {
+              cache.put(event.request, responseToCache);
+            });
+          }
+          return networkResponse;
+        })
+        .catch(() => caches.match(event.request))
+    );
+    return;
+  }
+
   // Cache-first strategy for static application assets with network fallback
   event.respondWith(
     caches.match(event.request).then((cachedResponse) => {
@@ -97,8 +115,7 @@ self.addEventListener('fetch', (event) => {
           if (
             networkResponse &&
             networkResponse.status === 200 &&
-            (url.pathname === '/app' ||
-              url.pathname.startsWith('/assets/') ||
+            (url.pathname.startsWith('/assets/') ||
               url.hostname.includes('fonts.googleapis.com') ||
               url.hostname.includes('unpkg.com'))
           ) {

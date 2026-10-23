@@ -40,6 +40,48 @@ export const VJIT_COLORS = {
   stateIdleLight: '#FEF3C7',
 } as const;
 
+export const VJIT_DARK_COLORS = {
+  // Brand Anchors (adjusted for dark backgrounds to ensure contrast)
+  brandRed: '#EF4444',       // Red-500
+  brandRedDark: '#DC2626',   // Red-600
+  brandRedLight: '#7F1D1D',  // Red-900
+
+  brandNavy: '#38BDF8',      // Sky-400 accent for dark surfaces
+  brandNavySub: '#60A5FA',   // Blue-400
+  brandNavyDark: '#0B132B',  // Deep rich background
+  brandNavyLight: '#1E3A8A', // Blue-900
+
+  // Surfaces & Canvas
+  canvasWhite: '#1E293B',    // Slate-800 card surface
+  canvasLight: '#0F172A',    // Slate-900 page background
+  canvasCard: '#1E293B',     // Slate-800
+  canvasElevated: '#243247', // Elevated popover/modal
+
+  // Borders & Dividers
+  borderSubtle: '#334155',   // Slate-700
+  borderStrong: '#475569',   // Slate-600
+
+  // Text Hierarchy
+  textPrimary: '#F8FAFC',    // Slate-50 (contrast > 13:1 on Slate-900)
+  textSecondary: '#CBD5E1',  // Slate-300 (contrast > 8:1)
+  textMuted: '#94A3B8',      // Slate-400 (contrast > 4.6:1)
+  textInverse: '#0F172A',
+
+  // Tracking Integrity States (Calibrated for dark mode contrast)
+  stateLive: '#22C55E',      // Green-500
+  stateLiveLight: '#052E16', // Green-950
+  stateLiveBorder: '#166534',// Green-800
+  stateStale: '#F59E0B',     // Amber-500
+  stateStaleLight: '#451A03',// Amber-950
+  stateStaleBorder: '#78350F',
+  stateUnavail: '#EF4444',   // Red-500
+  stateUnavailLight: '#450A0A',
+  stateUnavailBorder: '#7F1D1D',
+  stateIdle: '#94A3B8',      // Slate-400
+  stateIdleLight: '#1E293B', // Slate-800
+  stateIdleBorder: '#475569',
+} as const;
+
 export const VJIT_TYPOGRAPHY = {
   fontFamilySans: 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
   fontFamilyHeading: 'Inter, Outfit, sans-serif',
