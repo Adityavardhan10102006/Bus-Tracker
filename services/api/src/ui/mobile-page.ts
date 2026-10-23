@@ -1768,7 +1768,7 @@ export function renderMobileHtml(): string {
       if (appState.searchQuery) {
         const q = appState.searchQuery.toLowerCase();
         filtered = filtered.filter(b => {
-          const busMatch = b.bus_number.toLowerCase().includes(q) || b.route_name.toLowerCase().includes(q) || b.registration.toLowerCase().includes(q);
+          const busMatch = b.bus_number.toLowerCase().includes(q) || (b.display_name && b.display_name.toLowerCase().includes(q)) || b.route_name.toLowerCase().includes(q) || b.registration.toLowerCase().includes(q);
           const route = appState.routes.find(r => r.id === b.route_id);
           const stopMatch = route && route.stops && route.stops.some(s => s.name.toLowerCase().includes(q));
           return busMatch || stopMatch;
@@ -1839,6 +1839,7 @@ export function renderMobileHtml(): string {
           <div class="bus-card-header">
             <div class="bus-badge-group">
               <span class="bus-id-badge">\${bus.bus_number}</span>
+              \${bus.display_name ? \`<span style="font-size:12px; font-weight:600; color:var(--text-secondary); margin-left:4px;">\${bus.display_name}</span>\` : ''}
               \${starBtnHtml}
               <span class="bus-reg-label">\${bus.registration}</span>
             </div>
@@ -1914,8 +1915,8 @@ export function renderMobileHtml(): string {
         ? bus.age_seconds + 's ago' + (bus.state === 'STALE' ? ' (Stale)' : '')
         : (bus.state === 'UNAVAILABLE' ? 'No signal' : 'In depot');
 
-      document.getElementById('detail-nav-title').textContent = bus.bus_number;
-      document.getElementById('detail-bus-num').textContent = bus.bus_number;
+      document.getElementById('detail-nav-title').textContent = bus.bus_number + (bus.display_name ? ' • ' + bus.display_name : '');
+      document.getElementById('detail-bus-num').textContent = bus.bus_number + (bus.display_name ? ' (' + bus.display_name + ')' : '');
       document.getElementById('detail-route-name').textContent = bus.route_name;
       document.getElementById('detail-reg-num').textContent = bus.registration;
       document.getElementById('detail-speed-val').textContent = (bus.speed_kmh ? Math.round(bus.speed_kmh) : 0) + ' km/h';

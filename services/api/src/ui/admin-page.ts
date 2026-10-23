@@ -913,6 +913,17 @@ export function renderAdminHtml(): string {
       cursor: pointer;
     }
 
+    .dev-filter-btn.active {
+      background: var(--brand-navy) !important;
+      color: white !important;
+      border-color: var(--brand-navy) !important;
+    }
+    [data-theme="dark"] .dev-filter-btn.active {
+      background: #38BDF8 !important;
+      color: #0B132B !important;
+      border-color: #38BDF8 !important;
+    }
+
     .feedback-banner {
       padding: 12px 18px;
       border-radius: 8px;
@@ -1051,12 +1062,16 @@ export function renderAdminHtml(): string {
             <div class="counter-card-val" id="cnt-stale-buses" style="color:var(--state-stale);">1</div>
           </div>
           <div class="counter-card">
-            <div class="counter-card-lbl">Unavailable</div>
-            <div class="counter-card-val" id="cnt-unavail-buses" style="color:var(--state-unavail);">1</div>
+            <div class="counter-card-lbl">Standby / In Depot</div>
+            <div class="counter-card-val" id="cnt-idle-buses" style="color:var(--state-idle);">1</div>
           </div>
           <div class="counter-card">
-            <div class="counter-card-lbl">Outside Shift</div>
-            <div class="counter-card-val" id="cnt-idle-buses" style="color:var(--state-idle);">1</div>
+            <div class="counter-card-lbl">Unassigned Buses</div>
+            <div class="counter-card-val" id="cnt-unassigned-buses" style="color:var(--text-secondary);">0</div>
+          </div>
+          <div class="counter-card">
+            <div class="counter-card-lbl">Hardware In Pool</div>
+            <div class="counter-card-val" id="cnt-unassigned-devices" style="color:var(--brand-red);">1</div>
           </div>
         </div>
 
@@ -1107,12 +1122,13 @@ export function renderAdminHtml(): string {
           <table class="data-table">
             <thead>
               <tr>
-                <th>Bus Identifier</th>
+                <th>Bus Identifier &amp; Display Name</th>
                 <th>Registration</th>
                 <th>Route Corridor</th>
-                <th>Current Location / Stop</th>
+                <th>Tracking Hardware</th>
+                <th>Location / Stop</th>
                 <th>Capacity</th>
-                <th>Lifecycle Status</th>
+                <th>Status</th>
                 <th>Statutory Compliance</th>
                 <th>Actions</th>
               </tr>
@@ -1169,22 +1185,34 @@ export function renderAdminHtml(): string {
             <h2>GPS Tracker Hardware Inventory (ADM-04)</h2>
             <p>In-bus ESP8266/NEO-6M hardware modules and bus association mappings.</p>
           </div>
+          <button class="btn-create" id="btn-open-register-device">
+            <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+            Register GPS Tracker
+          </button>
         </div>
 
         <div class="data-table-container">
-          <div class="table-toolbar">
-            <input type="text" class="table-search-input" id="devices-search-input" placeholder="Search device ID, IMEI, or assigned bus...">
-            <span style="font-size:12.5px; color:var(--text-secondary);">Tracker Association Registry (Rule E.6 Protected)</span>
+          <div class="table-toolbar" style="flex-wrap: wrap; gap: 10px;">
+            <input type="text" class="table-search-input" id="devices-search-input" placeholder="Search device ID, nickname, model, IMEI, or assigned bus..." style="flex:1; min-width:260px;">
+            <div style="display:flex; gap:6px; flex-wrap:wrap;">
+              <button type="button" class="btn-table-action dev-filter-btn active" data-filter="ALL" onclick="setDeviceFilter('ALL')">All Devices</button>
+              <button type="button" class="btn-table-action dev-filter-btn" data-filter="LINKED" onclick="setDeviceFilter('LINKED')">Active Links</button>
+              <button type="button" class="btn-table-action dev-filter-btn" data-filter="UNLINKED" onclick="setDeviceFilter('UNLINKED')">Unassociated</button>
+              <button type="button" class="btn-table-action dev-filter-btn" data-filter="ONLINE" onclick="setDeviceFilter('ONLINE')">Online Live</button>
+              <button type="button" class="btn-table-action dev-filter-btn" data-filter="STANDBY" onclick="setDeviceFilter('STANDBY')">Standby / Unreported</button>
+              <button type="button" class="btn-table-action dev-filter-btn" data-filter="REVOKED" onclick="setDeviceFilter('REVOKED')">Revoked</button>
+            </div>
           </div>
           <table class="data-table">
             <thead>
               <tr>
-                <th>Device ID</th>
-                <th>Serial / IMEI</th>
-                <th>Connectivity Signal</th>
+                <th>Device ID &amp; Nickname</th>
+                <th>Model &amp; Hardware Type</th>
+                <th>Serial / Cellular (IMEI)</th>
+                <th>Health &amp; Telemetry Signal</th>
                 <th>Provisioning</th>
-                <th>Firmware</th>
                 <th>Associated Bus</th>
+                <th>Assigned Route</th>
                 <th>Last Telemetry Report</th>
                 <th>Actions</th>
               </tr>
@@ -1423,8 +1451,20 @@ export function renderAdminHtml(): string {
               <input type="text" class="form-control" name="bus_number" required placeholder="Bus 18">
             </div>
             <div class="form-group">
+              <label>Display / Fleet Name</label>
+              <input type="text" class="form-control" name="display_name" placeholder="Campus Express 18">
+            </div>
+          </div>
+          <div class="form-grid-2">
+            <div class="form-group">
               <label>Registration Number</label>
               <input type="text" class="form-control" name="registration" required placeholder="TS 09 UB 6618">
+            </div>
+            <div class="form-group">
+              <label>Assigned Route Corridor</label>
+              <select class="form-control" id="add-bus-route-select" name="assigned_route_id">
+                <option value="">-- No Route Assigned --</option>
+              </select>
             </div>
           </div>
           <div class="form-grid-2">
@@ -1517,9 +1557,12 @@ export function renderAdminHtml(): string {
       <form id="form-link-device">
         <input type="hidden" id="link-target-device-id" name="device_id">
         <div class="modal-body">
-          <p style="font-size:13px; color:var(--text-secondary); margin-bottom:16px;">
+          <p style="font-size:13px; color:var(--text-secondary); margin-bottom:12px;">
             Target Device: <strong id="link-device-label">HW_3045</strong>
           </p>
+          <div id="link-reassign-warning" style="display:none; background:#FEF3C7; border:1px solid #FCD34D; color:#92400E; padding:10px 12px; border-radius:6px; font-size:12px; margin-bottom:14px; line-height:1.4;">
+            <strong>⚠️ Reassignment Warning:</strong> This device or target bus is currently assigned. Associating will safely close previous links, migrate live telemetry, and prevent duplicate updates.
+          </div>
           <div class="form-group">
             <label>Select Bus for Association</label>
             <select class="form-control" id="link-bus-select" name="bus_id" required>
@@ -1533,6 +1576,127 @@ export function renderAdminHtml(): string {
         <div class="modal-foot">
           <button type="button" class="btn-secondary" onclick="closeModal('modal-link-device')">Cancel</button>
           <button type="submit" class="btn-primary">Confirm Association</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal: Register GPS Tracker Hardware -->
+  <div class="modal-overlay" id="modal-register-device">
+    <div class="admin-modal-card">
+      <div class="modal-head">
+        <h3>Register GPS Tracker Hardware</h3>
+        <button class="modal-close-x" onclick="closeModal('modal-register-device')">&times;</button>
+      </div>
+      <form id="form-register-device">
+        <div class="modal-body">
+          <div class="form-grid-2">
+            <div class="form-group">
+              <label>Device Identifier (e.g. HW_3049)</label>
+              <input type="text" class="form-control" name="device_id" required placeholder="HW_3049">
+            </div>
+            <div class="form-group">
+              <label>Hardware Serial Number</label>
+              <input type="text" class="form-control" name="serial_number" required placeholder="SN-ESP8266-9901">
+            </div>
+          </div>
+          <div class="form-grid-2">
+            <div class="form-group">
+              <label>Hardware Model / Chipset</label>
+              <input type="text" class="form-control" name="model" required value="ESP8266-NEO6M" placeholder="ESP8266-NEO6M">
+            </div>
+            <div class="form-group">
+              <label>Nickname / Placement</label>
+              <input type="text" class="form-control" name="nickname" placeholder="Dash Unit 7">
+            </div>
+          </div>
+          <div class="form-grid-2">
+            <div class="form-group">
+              <label>Cellular IMEI (15 Digits)</label>
+              <input type="text" class="form-control" name="imei" required placeholder="862345051234567" pattern="[0-9]{15}">
+            </div>
+            <div class="form-group">
+              <label>SIM Number / ICCID (Optional)</label>
+              <input type="text" class="form-control" name="sim_number" placeholder="8991101200003456789">
+            </div>
+          </div>
+          <div class="form-grid-2">
+            <div class="form-group">
+              <label>Firmware Version</label>
+              <input type="text" class="form-control" name="firmware_version" required value="1.2.0">
+            </div>
+            <div class="form-group">
+              <label>Initial Status</label>
+              <select class="form-control" name="status">
+                <option value="ACTIVE">ACTIVE</option>
+                <option value="PROVISIONED">PROVISIONED</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-group">
+            <label>HMAC Device Secret Token (Optional)</label>
+            <input type="text" class="form-control" name="auth_token" placeholder="Leave blank to auto-generate secure token">
+            <span style="font-size:11px; color:var(--text-muted); display:block; margin-top:4px;">
+              Security Note: Transmitted tokens are hashed via SHA-256 before persistence and cannot be retrieved in plaintext.
+            </span>
+          </div>
+        </div>
+        <div class="modal-foot">
+          <button type="button" class="btn-secondary" onclick="closeModal('modal-register-device')">Cancel</button>
+          <button type="submit" class="btn-primary">Register GPS Tracker</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal: Edit GPS Tracker Metadata -->
+  <div class="modal-overlay" id="modal-edit-device">
+    <div class="admin-modal-card">
+      <div class="modal-head">
+        <h3>Edit GPS Tracker Metadata</h3>
+        <button class="modal-close-x" onclick="closeModal('modal-edit-device')">&times;</button>
+      </div>
+      <form id="form-edit-device">
+        <input type="hidden" id="edit-dev-id" name="device_id">
+        <div class="modal-body">
+          <div class="form-grid-2">
+            <div class="form-group">
+              <label>Device ID</label>
+              <input type="text" class="form-control" id="edit-dev-id-display" disabled style="background:var(--canvas-light);">
+            </div>
+            <div class="form-group">
+              <label>Serial Number</label>
+              <input type="text" class="form-control" id="edit-dev-sn-display" disabled style="background:var(--canvas-light);">
+            </div>
+          </div>
+          <div class="form-grid-2">
+            <div class="form-group">
+              <label>Model / Chipset</label>
+              <input type="text" class="form-control" id="edit-dev-model" name="model" required>
+            </div>
+            <div class="form-group">
+              <label>Device Nickname</label>
+              <input type="text" class="form-control" id="edit-dev-nickname" name="nickname">
+            </div>
+          </div>
+          <div class="form-grid-2">
+            <div class="form-group">
+              <label>Firmware Version</label>
+              <input type="text" class="form-control" id="edit-dev-firmware" name="firmware_version" required>
+            </div>
+            <div class="form-group">
+              <label>Lifecycle Status</label>
+              <select class="form-control" id="edit-dev-status" name="status">
+                <option value="ACTIVE">ACTIVE</option>
+                <option value="PROVISIONED">PROVISIONED</option>
+                <option value="REVOKED">REVOKED (Deactivated)</option>
+              </select>
+            </div>
+          </div>
+        </div>
+        <div class="modal-foot">
+          <button type="button" class="btn-secondary" onclick="closeModal('modal-edit-device')">Cancel</button>
+          <button type="submit" class="btn-primary">Save Changes</button>
         </div>
       </form>
     </div>
@@ -1554,8 +1718,20 @@ export function renderAdminHtml(): string {
               <input type="text" class="form-control" id="edit-bus-number" name="bus_number" required>
             </div>
             <div class="form-group">
+              <label>Display / Fleet Name</label>
+              <input type="text" class="form-control" id="edit-bus-display-name" name="display_name" placeholder="Campus Express 18">
+            </div>
+          </div>
+          <div class="form-grid-2">
+            <div class="form-group">
               <label>Registration Number</label>
               <input type="text" class="form-control" id="edit-bus-registration" name="registration" required>
+            </div>
+            <div class="form-group">
+              <label>Assigned Route Corridor</label>
+              <select class="form-control" id="edit-bus-route" name="assigned_route_id">
+                <option value="">-- No Route Assigned --</option>
+              </select>
             </div>
           </div>
           <div class="form-grid-2">
@@ -1937,6 +2113,7 @@ export function renderAdminHtml(): string {
       busesSearchQuery: '',
       routesSearchQuery: '',
       devicesSearchQuery: '',
+      devicesFilter: 'ALL',
       attFilter: { tripType: '', status: '', search: '' },
       maintFilter: { entityType: '', status: '', search: '' }
     };
@@ -2105,6 +2282,7 @@ export function renderAdminHtml(): string {
       const btnAddRoute = document.getElementById('btn-open-add-route');
       const btnManualCheckin = document.getElementById('btn-open-manual-checkin');
       const btnAddTicket = document.getElementById('btn-open-add-ticket');
+      const btnRegDev = document.getElementById('btn-open-register-device');
 
       // SEC & MGT are read-only
       if (role === 'SEC' || role === 'MGT') {
@@ -2112,29 +2290,41 @@ export function renderAdminHtml(): string {
         if (btnAddRoute) btnAddRoute.style.display = 'none';
         if (btnManualCheckin) btnManualCheckin.style.display = 'none';
         if (btnAddTicket) btnAddTicket.style.display = 'none';
+        if (btnRegDev) btnRegDev.style.display = 'none';
       } else if (role === 'TEC') {
         if (btnAddBus) btnAddBus.style.display = 'none';
         if (btnAddRoute) btnAddRoute.style.display = 'none';
         if (btnManualCheckin) btnManualCheckin.style.display = 'none';
         if (btnAddTicket) btnAddTicket.style.display = 'inline-flex';
+        if (btnRegDev) btnRegDev.style.display = 'inline-flex';
       } else {
         if (btnAddBus) btnAddBus.style.display = 'inline-flex';
         if (btnAddRoute) btnAddRoute.style.display = 'inline-flex';
         if (btnManualCheckin) btnManualCheckin.style.display = 'inline-flex';
         if (btnAddTicket) btnAddTicket.style.display = 'inline-flex';
+        if (btnRegDev) btnRegDev.style.display = 'inline-flex';
       }
     }
 
     // Render Fleet Operations Deck
     function renderFleetDeck() {
       const snaps = adminState.snapshots;
-      document.getElementById('cnt-total-buses').textContent = snaps.length;
+      const totalBuses = adminState.buses.length || snaps.length;
+      document.getElementById('cnt-total-buses').textContent = totalBuses;
       document.getElementById('cnt-live-buses').textContent = snaps.filter(s => s.state === 'LIVE_HW' || s.state === 'LIVE_PHONE').length;
       const elLinked = document.getElementById('cnt-linked-devices');
       if (elLinked) elLinked.textContent = adminState.links.filter(l => !l.valid_to).length;
       document.getElementById('cnt-stale-buses').textContent = snaps.filter(s => s.state === 'STALE').length;
-      document.getElementById('cnt-unavail-buses').textContent = snaps.filter(s => s.state === 'UNAVAILABLE').length;
-      document.getElementById('cnt-idle-buses').textContent = snaps.filter(s => s.state === 'NOT_RUNNING').length;
+      const elIdle = document.getElementById('cnt-idle-buses');
+      if (elIdle) elIdle.textContent = snaps.filter(s => s.state === 'NOT_RUNNING' || s.state === 'UNAVAILABLE').length;
+
+      const unassignedBusesCount = adminState.buses.filter(b => !b.assigned_route_id || !adminState.links.some(l => l.bus_id === b.id && !l.valid_to)).length;
+      const elUnassignedBuses = document.getElementById('cnt-unassigned-buses');
+      if (elUnassignedBuses) elUnassignedBuses.textContent = unassignedBusesCount;
+
+      const unassignedDevicesCount = adminState.devices.filter(d => !adminState.links.some(l => l.device_id === d.device_id && !l.valid_to)).length;
+      const elUnassignedDev = document.getElementById('cnt-unassigned-devices');
+      if (elUnassignedDev) elUnassignedDev.textContent = unassignedDevicesCount;
 
       const tbody = document.getElementById('fleet-table-body');
       tbody.innerHTML = '';
@@ -2175,16 +2365,27 @@ export function renderAdminHtml(): string {
       const tbody = document.getElementById('buses-admin-table-body');
       tbody.innerHTML = '';
 
+      // Populate add-bus-route-select options if needed
+      const addRouteSelect = document.getElementById('add-bus-route-select');
+      if (addRouteSelect && addRouteSelect.children.length <= 1) {
+        adminState.routes.forEach(r => {
+          const opt = document.createElement('option');
+          opt.value = r.id;
+          opt.textContent = r.code + ' - ' + r.name;
+          addRouteSelect.appendChild(opt);
+        });
+      }
+
       const canWrite = adminState.currentRole === 'COR' || adminState.currentRole === 'SAD';
       let filtered = adminState.buses;
 
       if (adminState.busesSearchQuery) {
         const q = adminState.busesSearchQuery.toLowerCase();
-        filtered = filtered.filter(b => b.bus_number.toLowerCase().includes(q) || b.registration.toLowerCase().includes(q) || b.status.toLowerCase().includes(q));
+        filtered = filtered.filter(b => b.bus_number.toLowerCase().includes(q) || (b.display_name && b.display_name.toLowerCase().includes(q)) || b.registration.toLowerCase().includes(q) || b.status.toLowerCase().includes(q));
       }
 
       if (filtered.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="8" style="text-align:center; color:var(--text-muted); padding:24px;">No buses found matching your search.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="9" style="text-align:center; color:var(--text-muted); padding:24px;">No buses found matching your search.</td></tr>';
         return;
       }
 
@@ -2194,14 +2395,32 @@ export function renderAdminHtml(): string {
         if (b.status === 'RETIRED') badgeClass = 'badge-retired';
 
         const snap = adminState.snapshots.find(s => s.bus_id === b.id);
-        const routeName = snap ? snap.route_name : 'Unassigned';
+        const route = adminState.routes.find(r => r.id === b.assigned_route_id);
+        const routeDisplay = route 
+          ? '<strong style="color:var(--brand-navy); font-size:13px;">' + route.code + '</strong><br><span style="font-size:11.5px; color:var(--text-secondary);">' + route.name + '</span>'
+          : '<span style="font-size:12px; color:var(--text-muted); font-style:italic;">-- Unassigned --</span>';
+
+        const activeLink = adminState.links.find(l => l.bus_id === b.id && !l.valid_to);
+        let deviceDisplay = '<span style="color:var(--text-muted); font-size:12px;">Unassociated</span>';
+        if (activeLink) {
+          const dev = adminState.devices.find(d => d.device_id === activeLink.device_id);
+          const isLive = dev && dev.connectivity_status === 'ONLINE';
+          deviceDisplay = '<code>' + activeLink.device_id + '</code>' + 
+            (dev && dev.nickname ? '<br><span style="font-size:11px; color:var(--text-secondary);">' + dev.nickname + '</span>' : '') +
+            '<br>' + (isLive ? '<span class="status-badge badge-live" style="font-size:10px; padding:1px 6px;">LIVE FEED</span>' : '<span class="status-badge badge-idle" style="font-size:10px; padding:1px 6px;">STANDBY / NO FIX</span>');
+        }
+
         const lastLocation = snap && snap.latitude ? (snap.latitude.toFixed(4) + ', ' + snap.longitude.toFixed(4) + (snap.next_stop ? ' • ' + snap.next_stop.name : '')) : 'No fix';
 
         const row = document.createElement('tr');
         row.innerHTML = \`
-          <td><strong style="color:var(--brand-navy); font-size:14px;">\${b.bus_number}</strong></td>
+          <td>
+            <strong style="color:var(--brand-navy); font-size:14px;">\${b.bus_number}</strong>
+            \${b.display_name ? \`<br><span style="font-size:12px; color:var(--text-secondary); font-weight:600;">\${b.display_name}</span>\` : ''}
+          </td>
           <td><code>\${b.registration}</code></td>
-          <td><div style="font-weight:600; color:var(--brand-navy); font-size:13px;">\${routeName}</div></td>
+          <td>\${routeDisplay}</td>
+          <td>\${deviceDisplay}</td>
           <td><span style="font-size:12px; color:var(--text-secondary);">\${lastLocation}</span></td>
           <td>\${b.seating_capacity} seats</td>
           <td><span class="status-badge \${badgeClass}">\${b.status}</span></td>
@@ -2270,17 +2489,37 @@ export function renderAdminHtml(): string {
       const tbody = document.getElementById('devices-admin-table-body');
       tbody.innerHTML = '';
 
+      const canWrite = adminState.currentRole === 'COR' || adminState.currentRole === 'TEC' || adminState.currentRole === 'SAD';
       const canLink = adminState.currentRole === 'COR' || adminState.currentRole === 'SAD';
       const isTec = adminState.currentRole === 'TEC';
       let filtered = adminState.devices;
 
+      // Filter by filter pill buttons
+      if (adminState.devicesFilter === 'LINKED') {
+        filtered = filtered.filter(d => adminState.links.some(l => l.device_id === d.device_id && !l.valid_to));
+      } else if (adminState.devicesFilter === 'UNLINKED') {
+        filtered = filtered.filter(d => !adminState.links.some(l => l.device_id === d.device_id && !l.valid_to));
+      } else if (adminState.devicesFilter === 'ONLINE') {
+        filtered = filtered.filter(d => d.connectivity_status === 'ONLINE');
+      } else if (adminState.devicesFilter === 'STANDBY') {
+        filtered = filtered.filter(d => !d.last_reported_at || d.connectivity_status !== 'ONLINE');
+      } else if (adminState.devicesFilter === 'REVOKED') {
+        filtered = filtered.filter(d => d.status === 'REVOKED');
+      }
+
       if (adminState.devicesSearchQuery) {
         const q = adminState.devicesSearchQuery.toLowerCase();
-        filtered = filtered.filter(d => d.device_id.toLowerCase().includes(q) || d.imei.toLowerCase().includes(q) || (d.sim_number && d.sim_number.includes(q)));
+        filtered = filtered.filter(d => {
+          const idMatch = d.device_id.toLowerCase().includes(q) || d.imei.toLowerCase().includes(q) || d.serial_number.toLowerCase().includes(q);
+          const metaMatch = (d.nickname && d.nickname.toLowerCase().includes(q)) || (d.model && d.model.toLowerCase().includes(q));
+          const activeL = adminState.links.find(l => l.device_id === d.device_id && !l.valid_to);
+          const busMatch = activeL && activeL.bus_number.toLowerCase().includes(q);
+          return idMatch || metaMatch || busMatch;
+        });
       }
 
       if (filtered.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; color:var(--text-muted); padding:24px;">No GPS tracker hardware found.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="9" style="text-align:center; color:var(--text-muted); padding:24px;">No GPS tracker hardware found matching the selected filter.</td></tr>';
         return;
       }
 
@@ -2288,7 +2527,7 @@ export function renderAdminHtml(): string {
         const activeLink = adminState.links.find(l => l.device_id === d.device_id && !l.valid_to);
         const row = document.createElement('tr');
 
-        let signalBadge = '<span class="status-badge badge-idle">○ STANDBY (NO FEED)</span>';
+        let signalBadge = '<span class="status-badge badge-idle">○ STANDBY (NO FIX)</span>';
         if (d.connectivity_status === 'ONLINE') {
           signalBadge = '<span class="status-badge badge-live">● ONLINE (' + (d.reporting_age_seconds !== null ? d.reporting_age_seconds + 's' : '0s') + ')</span>';
         } else if (d.connectivity_status === 'STOPPED_REPORTING') {
@@ -2303,22 +2542,49 @@ export function renderAdminHtml(): string {
         if (d.status === 'PROVISIONED') devStatusClass = 'badge-idle';
         if (d.status === 'REVOKED') devStatusClass = 'badge-unavail';
 
+        const assignedBus = activeLink ? adminState.buses.find(b => b.id === activeLink.bus_id) : null;
+        let busCell = '<span style="color:var(--text-muted); font-size:12px;">Unassociated (In Pool)</span>';
+        let routeCell = '<span style="color:var(--text-muted); font-size:11.5px;">&mdash;</span>';
+
+        if (activeLink) {
+          busCell = '<strong style="color:var(--brand-navy); font-size:13px;">' + activeLink.bus_number + '</strong>' + 
+            (assignedBus && assignedBus.display_name ? '<br><span style="font-size:11px; color:var(--text-secondary);">' + assignedBus.display_name + '</span>' : '');
+          
+          if (assignedBus && assignedBus.assigned_route_id) {
+            const r = adminState.routes.find(rt => rt.id === assignedBus.assigned_route_id);
+            if (r) {
+              routeCell = '<strong style="color:var(--brand-navy); font-size:12px;">' + r.code + '</strong><br><span style="font-size:11px; color:var(--text-secondary);">' + r.name + '</span>';
+            }
+          }
+        }
+
         row.innerHTML = \`
-          <td><strong>\${d.device_id}</strong></td>
-          <td><code>\${d.serial_number}</code><br><span style="font-size:11px; color:var(--text-muted);">IMEI: \${d.imei}</span></td>
+          <td>
+            <strong style="color:var(--brand-navy);">\${d.device_id}</strong>
+            \${d.nickname ? \`<br><span style="font-size:11.5px; color:var(--text-secondary); font-weight:600;">\${d.nickname}</span>\` : ''}
+          </td>
+          <td>
+            <span style="font-weight:600; font-size:12.5px;">\${d.model || 'ESP8266-NEO6M'}</span>
+            <br><span style="font-size:11px; color:var(--text-muted);">v\${d.firmware_version}</span>
+          </td>
+          <td>
+            <code>\${d.serial_number}</code>
+            <br><span style="font-size:11px; color:var(--text-muted);">IMEI: \${d.imei}\${d.sim_number ? ' • SIM: ' + d.sim_number : ''}</span>
+          </td>
           <td>\${signalBadge}</td>
           <td><span class="status-badge \${devStatusClass}">\${d.status}</span></td>
-          <td>v\${d.firmware_version}</td>
-          <td>\${activeLink ? '<strong style="color:var(--brand-navy);">' + activeLink.bus_number + '</strong>' : '<span style="color:var(--text-muted);">Unassociated (In Pool)</span>'}</td>
+          <td>\${busCell}</td>
+          <td>\${routeCell}</td>
           <td>\${lastReportText}</td>
           <td>
             <div style="display:flex; flex-wrap:wrap; gap:4px;">
+              \${canWrite ? \`<button class="btn-table-action" onclick="openEditDeviceModal('\${d.device_id}')">Edit</button>\` : ''}
               \${canLink ? \`
                 \${activeLink ? \`<button class="btn-table-action btn-table-danger" onclick="unlinkDevice('\${d.device_id}')">Unlink</button>\` : ''}
                 <button class="btn-table-action" onclick="openLinkModal('\${d.device_id}')">\${activeLink ? 'Reassign' : 'Associate'}</button>
-                \${d.status !== 'REVOKED' ? \`<button class="btn-table-action btn-table-danger" onclick="updateDeviceStatus('\${d.device_id}', 'REVOKED')" title="Revoke compromised device">Revoke</button>\` : \`<button class="btn-table-action" style="color:var(--state-live); border-color:var(--state-live);" onclick="updateDeviceStatus('\${d.device_id}', 'ACTIVE')" title="Reactivate device">Reactivate</button>\`}
-                \${d.status === 'PROVISIONED' ? \`<button class="btn-table-action" style="color:var(--state-live); border-color:var(--state-live);" onclick="updateDeviceStatus('\${d.device_id}', 'ACTIVE')" title="Activate provisioned tracker">Activate</button>\` : ''}
-              \` : isTec ? \`<span style="font-size:11px; color:var(--text-muted); font-weight:600;">Rule E.6 Blocked</span>\` : '&mdash;'}
+                \${d.status !== 'REVOKED' ? \`<button class="btn-table-action btn-table-danger" onclick="updateDeviceStatus('\${d.device_id}', 'REVOKED')" title="Revoke device">Revoke</button>\` : \`<button class="btn-table-action" style="color:var(--state-live); border-color:var(--state-live);" onclick="updateDeviceStatus('\${d.device_id}', 'ACTIVE')" title="Reactivate device">Reactivate</button>\`}
+                \${d.status === 'PROVISIONED' ? \`<button class="btn-table-action" style="color:var(--state-live); border-color:var(--state-live);" onclick="updateDeviceStatus('\${d.device_id}', 'ACTIVE')" title="Activate tracker">Activate</button>\` : ''}
+              \` : isTec ? \`<span style="font-size:11px; color:var(--text-muted); font-weight:600; padding:4px 0;">Rule E.6 Blocked</span>\` : '&mdash;'}
             </div>
           </td>
         \`;
@@ -2368,7 +2634,22 @@ export function renderAdminHtml(): string {
 
       document.getElementById('edit-bus-id').value = bus.id;
       document.getElementById('edit-bus-number').value = bus.bus_number;
+      const elDisp = document.getElementById('edit-bus-display-name');
+      if (elDisp) elDisp.value = bus.display_name || '';
       document.getElementById('edit-bus-registration').value = bus.registration;
+
+      const routeSelect = document.getElementById('edit-bus-route');
+      if (routeSelect) {
+        routeSelect.innerHTML = '<option value="">-- No Route Assigned --</option>';
+        adminState.routes.forEach(r => {
+          const opt = document.createElement('option');
+          opt.value = r.id;
+          opt.textContent = r.code + ' - ' + r.name;
+          if (bus.assigned_route_id === r.id) opt.selected = true;
+          routeSelect.appendChild(opt);
+        });
+      }
+
       document.getElementById('edit-bus-capacity').value = bus.seating_capacity;
       document.getElementById('edit-bus-status').value = bus.status;
       document.getElementById('edit-bus-insurance').value = bus.insurance_expiry;
@@ -2377,6 +2658,31 @@ export function renderAdminHtml(): string {
       document.getElementById('edit-bus-permit').value = bus.permit_expiry;
 
       openModal('modal-edit-bus');
+    };
+
+    window.openRegisterDeviceModal = () => {
+      openModal('modal-register-device');
+    };
+
+    window.openEditDeviceModal = (deviceId) => {
+      const dev = adminState.devices.find(d => d.device_id === deviceId);
+      if (!dev) return;
+      document.getElementById('edit-dev-id').value = dev.device_id;
+      document.getElementById('edit-dev-id-display').value = dev.device_id;
+      document.getElementById('edit-dev-sn-display').value = dev.serial_number;
+      document.getElementById('edit-dev-model').value = dev.model || 'ESP8266-NEO6M';
+      document.getElementById('edit-dev-nickname').value = dev.nickname || '';
+      document.getElementById('edit-dev-firmware').value = dev.firmware_version || '1.2.0';
+      document.getElementById('edit-dev-status').value = dev.status || 'ACTIVE';
+      openModal('modal-edit-device');
+    };
+
+    window.setDeviceFilter = (filter) => {
+      adminState.devicesFilter = filter;
+      document.querySelectorAll('.dev-filter-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.filter === filter);
+      });
+      renderDevicesTable();
     };
 
     window.unlinkDevice = async (deviceId) => {
@@ -2711,15 +3017,35 @@ export function renderAdminHtml(): string {
     };
 
     window.openLinkModal = (deviceId) => {
+      const dev = adminState.devices.find(d => d.device_id === deviceId);
+      const activeLink = adminState.links.find(l => l.device_id === deviceId && !l.valid_to);
+
       document.getElementById('link-target-device-id').value = deviceId;
-      document.getElementById('link-device-label').textContent = deviceId;
+      document.getElementById('link-device-label').textContent = deviceId + (dev && dev.nickname ? ' (' + dev.nickname + ')' : '');
+
+      const warningEl = document.getElementById('link-reassign-warning');
+      if (warningEl) {
+        if (activeLink) {
+          warningEl.style.display = 'block';
+          warningEl.innerHTML = '<strong>⚠️ Reassignment Warning:</strong> Tracker <code>' + deviceId + '</code> is currently bound to <strong>' + activeLink.bus_number + '</strong>. Associating with a new bus will safely close the previous link, clear previous coordinates to prevent ghost movement, and route incoming hardware signals to the new bus.';
+        } else {
+          warningEl.style.display = 'none';
+        }
+      }
 
       const select = document.getElementById('link-bus-select');
       select.innerHTML = '';
       adminState.buses.filter(b => b.status === 'ACTIVE').forEach(b => {
+        const existingBusLink = adminState.links.find(l => l.bus_id === b.id && !l.valid_to);
+        const route = adminState.routes.find(r => r.id === b.assigned_route_id);
         const opt = document.createElement('option');
         opt.value = b.id;
-        opt.textContent = b.bus_number + ' (' + b.registration + ')';
+        let label = b.bus_number + ' (' + b.registration + ')';
+        if (b.display_name) label += ' • ' + b.display_name;
+        if (route) label += ' [' + route.code + ']';
+        if (existingBusLink) label += ' (Currently linked to ' + existingBusLink.device_id + ')';
+        opt.textContent = label;
+        if (activeLink && activeLink.bus_id === b.id) opt.selected = true;
         select.appendChild(opt);
       });
 
@@ -2732,7 +3058,9 @@ export function renderAdminHtml(): string {
       const fd = new FormData(e.target);
       const payload = {
         bus_number: fd.get('bus_number'),
+        display_name: fd.get('display_name') || undefined,
         registration: fd.get('registration'),
+        assigned_route_id: fd.get('assigned_route_id') || undefined,
         seating_capacity: parseInt(fd.get('seating_capacity')),
         status: fd.get('status'),
         insurance_expiry: fd.get('insurance_expiry'),
@@ -2820,7 +3148,9 @@ export function renderAdminHtml(): string {
       const busId = fd.get('id');
       const payload = {
         bus_number: fd.get('bus_number'),
+        display_name: fd.get('display_name') || undefined,
         registration: fd.get('registration'),
+        assigned_route_id: fd.get('assigned_route_id') || undefined,
         seating_capacity: parseInt(fd.get('seating_capacity')),
         status: fd.get('status'),
         insurance_expiry: fd.get('insurance_expiry'),
@@ -2845,6 +3175,71 @@ export function renderAdminHtml(): string {
         }
       } catch (err) {
         showFeedback('Network error updating bus', true);
+      }
+    };
+
+    document.getElementById('form-register-device').onsubmit = async (e) => {
+      e.preventDefault();
+      const fd = new FormData(e.target);
+      const payload = {
+        device_id: fd.get('device_id'),
+        serial_number: fd.get('serial_number'),
+        model: fd.get('model'),
+        nickname: fd.get('nickname') || undefined,
+        imei: fd.get('imei'),
+        sim_number: fd.get('sim_number') || undefined,
+        firmware_version: fd.get('firmware_version') || '1.2.0',
+        status: fd.get('status') || 'ACTIVE',
+        auth_token: fd.get('auth_token') || undefined
+      };
+
+      try {
+        const res = await fetch('/api/v1/devices', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        }).then(r => r.json());
+
+        if (res.success) {
+          closeModal('modal-register-device');
+          e.target.reset();
+          showFeedback('GPS Tracker ' + payload.device_id + ' registered successfully.');
+          await loadAdminData();
+        } else {
+          showFeedback(res.error?.message || 'Device registration rejected.', true);
+        }
+      } catch (err) {
+        showFeedback('Network error registering device', true);
+      }
+    };
+
+    document.getElementById('form-edit-device').onsubmit = async (e) => {
+      e.preventDefault();
+      const fd = new FormData(e.target);
+      const deviceId = fd.get('device_id');
+      const payload = {
+        model: fd.get('model'),
+        nickname: fd.get('nickname') || undefined,
+        firmware_version: fd.get('firmware_version'),
+        status: fd.get('status')
+      };
+
+      try {
+        const res = await fetch('/api/v1/devices/' + deviceId, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        }).then(r => r.json());
+
+        if (res.success) {
+          closeModal('modal-edit-device');
+          showFeedback('GPS Tracker ' + deviceId + ' updated successfully.');
+          await loadAdminData();
+        } else {
+          showFeedback(res.error?.message || 'Failed to update device.', true);
+        }
+      } catch (err) {
+        showFeedback('Network error updating device', true);
       }
     };
 
@@ -3468,6 +3863,8 @@ export function renderAdminHtml(): string {
     document.getElementById('btn-open-add-route').onclick = () => openModal('modal-add-route');
     document.getElementById('btn-open-manual-checkin').onclick = () => openModal('modal-manual-checkin');
     document.getElementById('btn-open-add-ticket').onclick = () => openModal('modal-add-ticket');
+    const btnOpenRegDev = document.getElementById('btn-open-register-device');
+    if (btnOpenRegDev) btnOpenRegDev.onclick = () => openModal('modal-register-device');
 
     // Filter Listeners
     document.getElementById('fleet-search-input').oninput = (e) => {

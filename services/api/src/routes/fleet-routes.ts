@@ -2,7 +2,14 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import { fleetDataStore } from '../store/fleet-data-store.js';
 import { sendErrorResponse } from '../middleware/security.js';
 import { logger } from '@vjit/logger';
-import type { UserRole } from '@vjit/contracts';
+import {
+  type UserRole,
+  createBusInputSchema,
+  updateBusInputSchema,
+  assignRouteInputSchema,
+  createDeviceInputSchema,
+  updateDeviceInputSchema,
+} from '@vjit/contracts';
 import { validateRouteStops, calculateRouteGeometry } from '@vjit/domain';
 
 /**
@@ -376,25 +383,61 @@ export async function handleFleetApiRoutes(
       return true;
     }
     try {
-      const body = await parseJsonBody<{
-        bus_number: string;
-        registration: string;
-        seating_capacity: number;
-        status: 'ACTIVE' | 'MAINTENANCE' | 'RETIRED';
-        insurance_expiry: string;
-        fitness_expiry: string;
-        pollution_expiry: string;
-        permit_expiry: string;
-      }>(req);
-
-      if (!body.bus_number || !body.registration || !body.seating_capacity) {
-        sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'Bus number, registration, and seating capacity are required.', requestId);
+      const rawBody = await parseJsonBody<unknown>(req);
+      const parseResult = createBusInputSchema.safeParse(rawBody);
+      if (!parseResult.success) {
+        sendErrorResponse(
+          res,
+          400,
+          'VALIDATION_ERROR',
+          parseResult.error.errors.map(e => `${e.path.join('.')}: ${e.message}`).join('; '),
+          requestId,
+        );
         return true;
       }
 
-      const newBus = fleetDataStore.createBus(body);
+      const newBus = fleetDataStore.createBus(parseResult.data, user.email, user.role);
       logger.info('Bus created by administrator', { busId: newBus.id, busNumber: newBus.bus_number });
       sendJsonResponse(res, 201, { success: true, bus: newBus, request_id: requestId }, requestId);
+      return true;
+    } catch (e) {
+      const msg = (e as Error).message;
+      const status = msg.toLowerCase().includes('duplicate') ? 409 : 400;
+      sendErrorResponse(res, status, 'BAD_REQUEST', msg, requestId);
+      return true;
+    }
+  }
+
+  // POST /api/v1/buses/:id/assign-route: Associate bus to saved transit route
+  if (method === 'POST' && pathname.includes('/api/v1/buses/') && pathname.endsWith('/assign-route')) {
+    const parts = pathname.split('/');
+    const busId = parts[4] ?? '';
+    const user = fleetDataStore.getCurrentUser();
+    if (user.role !== 'COR' && user.role !== 'SAD') {
+      sendErrorResponse(res, 403, 'FORBIDDEN', 'Role Unauthorized: Only Coordinators and Super Admins can assign routes to buses.', requestId);
+      return true;
+    }
+    try {
+      const rawBody = await parseJsonBody<unknown>(req);
+      const parseResult = assignRouteInputSchema.safeParse(rawBody);
+      if (!parseResult.success) {
+        sendErrorResponse(
+          res,
+          400,
+          'VALIDATION_ERROR',
+          parseResult.error.errors.map(e => `${e.path.join('.')}: ${e.message}`).join('; '),
+          requestId,
+        );
+        return true;
+      }
+      const result = fleetDataStore.assignBusToRoute(busId, parseResult.data.route_id, user.email, user.role);
+      if (!result.success) {
+        const status = result.error?.toLowerCase().includes('not found') ? 404 : 400;
+        sendErrorResponse(res, status, 'ASSIGN_ROUTE_ERROR', result.error ?? 'Failed to associate bus with route.', requestId);
+        return true;
+      }
+      logger.info('Bus associated with route', { busId, routeId: parseResult.data.route_id });
+      sendJsonResponse(res, 200, { success: true, bus: result.bus, request_id: requestId }, requestId);
       return true;
     } catch (e) {
       sendErrorResponse(res, 400, 'BAD_REQUEST', (e as Error).message, requestId);
@@ -403,7 +446,7 @@ export async function handleFleetApiRoutes(
   }
 
   // PUT /api/v1/buses/:id: Update bus
-  if ((method === 'PUT' || method === 'PATCH') && pathname.startsWith('/api/v1/buses/')) {
+  if ((method === 'PUT' || method === 'PATCH') && pathname.startsWith('/api/v1/buses/') && !pathname.endsWith('/assign-route')) {
     const user = fleetDataStore.getCurrentUser();
     if (user.role !== 'COR' && user.role !== 'SAD') {
       sendErrorResponse(res, 403, 'FORBIDDEN', 'Role Unauthorized: Only Coordinators and Super Admins can update buses.', requestId);
@@ -411,8 +454,19 @@ export async function handleFleetApiRoutes(
     }
     const busId = pathname.replace('/api/v1/buses/', '');
     try {
-      const body = await parseJsonBody<Record<string, unknown>>(req);
-      const updated = fleetDataStore.updateBus(busId, body);
+      const rawBody = await parseJsonBody<unknown>(req);
+      const parseResult = updateBusInputSchema.safeParse(rawBody);
+      if (!parseResult.success) {
+        sendErrorResponse(
+          res,
+          400,
+          'VALIDATION_ERROR',
+          parseResult.error.errors.map(e => `${e.path.join('.')}: ${e.message}`).join('; '),
+          requestId,
+        );
+        return true;
+      }
+      const updated = fleetDataStore.updateBus(busId, parseResult.data, user.email, user.role);
       if (!updated) {
         sendErrorResponse(res, 404, 'NOT_FOUND', `Bus ${busId} not found.`, requestId);
         return true;
@@ -448,8 +502,79 @@ export async function handleFleetApiRoutes(
   if (method === 'GET' && pathname === '/api/v1/devices') {
     const devices = fleetDataStore.getDevices();
     const links = fleetDataStore.getLinks();
-    sendJsonResponse(res, 200, { devices, links, request_id: requestId }, requestId);
+    sendJsonResponse(res, 200, { devices, links, total: devices.length, request_id: requestId }, requestId);
     return true;
+  }
+
+  // POST /api/v1/devices: Register new hardware device
+  if (method === 'POST' && pathname === '/api/v1/devices') {
+    const user = fleetDataStore.getCurrentUser();
+    // Technicians (TEC), Coordinators (COR), and Super Admins (SAD) can register devices
+    if (user.role !== 'COR' && user.role !== 'TEC' && user.role !== 'SAD') {
+      sendErrorResponse(res, 403, 'FORBIDDEN', 'Role Unauthorized: Only Coordinators, Technicians, and Super Admins can register GPS devices.', requestId);
+      return true;
+    }
+    try {
+      const rawBody = await parseJsonBody<unknown>(req);
+      const parseResult = createDeviceInputSchema.safeParse(rawBody);
+      if (!parseResult.success) {
+        sendErrorResponse(
+          res,
+          400,
+          'VALIDATION_ERROR',
+          parseResult.error.errors.map(e => `${e.path.join('.')}: ${e.message}`).join('; '),
+          requestId,
+        );
+        return true;
+      }
+      const result = fleetDataStore.registerDevice(parseResult.data, user.email, user.role);
+      if (!result.success) {
+        sendErrorResponse(res, 409, 'DUPLICATE_DEVICE_ERROR', result.error ?? 'Device registration failed.', requestId);
+        return true;
+      }
+      logger.info('Device registered in registry', { deviceId: result.device?.device_id, actor: user.email });
+      sendJsonResponse(res, 201, { success: true, device: result.device, request_id: requestId }, requestId);
+      return true;
+    } catch (e) {
+      sendErrorResponse(res, 400, 'BAD_REQUEST', (e as Error).message, requestId);
+      return true;
+    }
+  }
+
+  // PUT/PATCH /api/v1/devices/:id: Update device details (model, nickname, firmware)
+  if ((method === 'PUT' || method === 'PATCH') && pathname.startsWith('/api/v1/devices/') &&
+      !pathname.endsWith('/link') && !pathname.endsWith('/unlink') && !pathname.endsWith('/status')) {
+    const user = fleetDataStore.getCurrentUser();
+    if (user.role !== 'COR' && user.role !== 'TEC' && user.role !== 'SAD') {
+      sendErrorResponse(res, 403, 'FORBIDDEN', 'Role Unauthorized: Only Coordinators, Technicians, and Super Admins can edit device details.', requestId);
+      return true;
+    }
+    const deviceId = pathname.replace('/api/v1/devices/', '');
+    try {
+      const rawBody = await parseJsonBody<unknown>(req);
+      const parseResult = updateDeviceInputSchema.safeParse(rawBody);
+      if (!parseResult.success) {
+        sendErrorResponse(
+          res,
+          400,
+          'VALIDATION_ERROR',
+          parseResult.error.errors.map(e => `${e.path.join('.')}: ${e.message}`).join('; '),
+          requestId,
+        );
+        return true;
+      }
+      const result = fleetDataStore.updateDevice(deviceId, parseResult.data, user.email, user.role);
+      if (!result.success) {
+        sendErrorResponse(res, 404, 'NOT_FOUND', result.error ?? 'Device not found.', requestId);
+        return true;
+      }
+      logger.info('Device details updated', { deviceId, actor: user.email });
+      sendJsonResponse(res, 200, { success: true, device: result.device, request_id: requestId }, requestId);
+      return true;
+    } catch (e) {
+      sendErrorResponse(res, 400, 'BAD_REQUEST', (e as Error).message, requestId);
+      return true;
+    }
   }
 
   // POST /api/v1/devices/:id/link: Link device to bus

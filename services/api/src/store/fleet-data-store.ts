@@ -461,6 +461,8 @@ export class FleetDataStore
         id: '00000000-0000-4000-8000-000000000001',
         bus_number: 'Bus 12',
         registration: 'TS 09 UB 4412',
+        display_name: 'Campus Express 12',
+        assigned_route_id: '00000000-0000-4000-8000-000000000012',
         seating_capacity: 52,
         status: 'ACTIVE',
         insurance_expiry: '2027-04-15',
@@ -474,6 +476,8 @@ export class FleetDataStore
         id: '00000000-0000-4000-8000-000000000002',
         bus_number: 'Bus 05',
         registration: 'TS 09 UB 3305',
+        display_name: 'KPHB IT Corridor 05',
+        assigned_route_id: '00000000-0000-4000-8000-000000000005',
         seating_capacity: 50,
         status: 'ACTIVE',
         insurance_expiry: '2027-05-20',
@@ -487,6 +491,8 @@ export class FleetDataStore
         id: '00000000-0000-4000-8000-000000000003',
         bus_number: 'Bus 08',
         registration: 'TS 09 UB 5508',
+        display_name: 'Aramghar Feeder 08',
+        assigned_route_id: '00000000-0000-4000-8000-000000000008',
         seating_capacity: 54,
         status: 'ACTIVE',
         insurance_expiry: '2027-06-18',
@@ -500,6 +506,8 @@ export class FleetDataStore
         id: '00000000-0000-4000-8000-000000000004',
         bus_number: 'Bus 21',
         registration: 'TS 09 UB 2221',
+        display_name: 'Secunderabad Deluxe 21',
+        assigned_route_id: '00000000-0000-4000-8000-000000000021',
         seating_capacity: 48,
         status: 'ACTIVE',
         insurance_expiry: '2027-07-22',
@@ -513,6 +521,8 @@ export class FleetDataStore
         id: '00000000-0000-4000-8000-000000000005',
         bus_number: 'Bus 16',
         registration: 'TS 09 UB 1616',
+        display_name: 'Campus Shuttle 16',
+        assigned_route_id: '00000000-0000-4000-8000-000000000012',
         seating_capacity: 50,
         status: 'MAINTENANCE',
         insurance_expiry: '2027-01-10',
@@ -526,6 +536,8 @@ export class FleetDataStore
         id: '00000000-0000-4000-8000-000000000006',
         bus_number: 'Bus 03',
         registration: 'TS 09 UB 1103',
+        display_name: 'Depot Reserve 03',
+        assigned_route_id: '00000000-0000-4000-8000-000000000005',
         seating_capacity: 50,
         status: 'ACTIVE',
         insurance_expiry: '2027-08-30',
@@ -543,6 +555,8 @@ export class FleetDataStore
         id: '00000000-0000-4000-8000-000000001042',
         device_id: 'HW_1042',
         serial_number: 'VJIT-GPS-1042-REV2',
+        model: 'Teltonika FMB920',
+        nickname: 'Bus 12 Primary GNSS',
         imei: '860456041234567',
         iccid: '89911012024123456789',
         status: 'ACTIVE',
@@ -554,6 +568,8 @@ export class FleetDataStore
         id: '00000000-0000-4000-8000-000000001085',
         device_id: 'HW_1085',
         serial_number: 'VJIT-GPS-1085-REV2',
+        model: 'Teltonika FMB920',
+        nickname: 'Bus 05 Primary GNSS',
         imei: '860456041234568',
         iccid: '89911012024123456790',
         status: 'ACTIVE',
@@ -565,6 +581,8 @@ export class FleetDataStore
         id: '00000000-0000-4000-8000-000000002011',
         device_id: 'HW_2011',
         serial_number: 'VJIT-GPS-2011-REV2',
+        model: 'Concox AT4',
+        nickname: 'Bus 08 Primary GNSS',
         imei: '860456041234569',
         iccid: '89911012024123456791',
         status: 'ACTIVE',
@@ -576,6 +594,8 @@ export class FleetDataStore
         id: '00000000-0000-4000-8000-000000003045',
         device_id: 'HW_3045',
         serial_number: 'VJIT-GPS-3045-REV2',
+        model: 'Teltonika FMB920',
+        nickname: 'Workshop Reserve Unit',
         imei: '860456041234570',
         iccid: '89911012024123456792',
         status: 'PROVISIONED',
@@ -908,13 +928,15 @@ export class FleetDataStore
     const snapshots: BusSnapshot[] = [];
 
     for (const bus of this.buses) {
+      const assignedRoute = (bus.assigned_route_id ? this.routes.find(r => r.id === bus.assigned_route_id) : null) ?? this.routes[0]!;
       if (bus.status === 'RETIRED') {
         snapshots.push({
           bus_id: bus.id,
           bus_number: bus.bus_number,
           registration: bus.registration,
-          route_id: this.routes[0]?.id ?? '00000000-0000-4000-8000-000000000012',
-          route_name: this.routes[0]?.name ?? 'Unassigned Route',
+          display_name: bus.display_name ?? null,
+          route_id: assignedRoute.id,
+          route_name: assignedRoute.name,
           state: 'UNAVAILABLE',
           state_label: 'Retired from Service',
           latitude: null,
@@ -937,8 +959,9 @@ export class FleetDataStore
           bus_id: bus.id,
           bus_number: bus.bus_number,
           registration: bus.registration,
-          route_id: this.routes[0]?.id ?? '00000000-0000-4000-8000-000000000012',
-          route_name: this.routes[0]?.name ?? 'Depot Maintenance',
+          display_name: bus.display_name ?? null,
+          route_id: assignedRoute.id,
+          route_name: assignedRoute.name,
           state: 'UNAVAILABLE',
           state_label: 'In Maintenance Depot',
           latitude: null,
@@ -981,6 +1004,7 @@ export class FleetDataStore
           bus_id: bus.id,
           bus_number: bus.bus_number,
           registration: bus.registration,
+          display_name: bus.display_name ?? null,
           route_id: route.id,
           route_name: route.name,
           state: isStale ? 'STALE' : 'LIVE_HW',
@@ -994,7 +1018,7 @@ export class FleetDataStore
           next_stop: nextStop,
           capacity: bus.seating_capacity,
           occupancy: 42,
-          trip_id: `00000000-0000-4000-8000-0000000000t${bus.bus_number.replace(/\D/g, '')}`,
+          trip_id: `00000000-0000-4000-8000-0000000000t${bus.bus_number.replace(/\D/g, '') || '0'}`,
           service_date: serviceDate,
           is_simulated: live.is_simulated ?? false,
           telemetry_source: (live.telemetry_source as any) ?? 'HARDWARE',
@@ -1002,15 +1026,16 @@ export class FleetDataStore
         continue;
       }
 
-      if (bus.id === '00000000-0000-4000-8000-000000000001') {
+      if (bus.id === '00000000-0000-4000-8000-000000000001' && this.demoState.enabled) {
         // Bus 12
-        const route = this.routes.find(r => r.id === '00000000-0000-4000-8000-000000000012') ?? this.routes[0]!;
+        const route = (bus.assigned_route_id ? this.routes.find(r => r.id === bus.assigned_route_id) : null) ?? this.routes[0]!;
         const pIndex = Math.min(this.busProgress.get(bus.id) ?? 6, (route.polyline?.length ?? 1) - 1);
         const [lat, lng] = route.polyline[pIndex] ?? [17.3590, 78.3850];
         snapshots.push({
           bus_id: bus.id,
           bus_number: bus.bus_number,
           registration: bus.registration,
+          display_name: bus.display_name ?? null,
           route_id: route.id,
           route_name: route.name,
           state: 'LIVE_HW',
@@ -1035,15 +1060,16 @@ export class FleetDataStore
           is_simulated: true,
           telemetry_source: 'DEMO_SIMULATION',
         });
-      } else if (bus.id === '00000000-0000-4000-8000-000000000002') {
+      } else if (bus.id === '00000000-0000-4000-8000-000000000002' && this.demoState.enabled) {
         // Bus 05
-        const route = this.routes.find(r => r.id === '00000000-0000-4000-8000-000000000005') ?? this.routes[0]!;
+        const route = (bus.assigned_route_id ? this.routes.find(r => r.id === bus.assigned_route_id) : null) ?? this.routes[1] ?? this.routes[0]!;
         const pIndex = Math.min(this.busProgress.get(bus.id) ?? 5, (route.polyline?.length ?? 1) - 1);
         const [lat, lng] = route.polyline[pIndex] ?? [17.4180, 78.3450];
         snapshots.push({
           bus_id: bus.id,
           bus_number: bus.bus_number,
           registration: bus.registration,
+          display_name: bus.display_name ?? null,
           route_id: route.id,
           route_name: route.name,
           state: 'LIVE_HW',
@@ -1068,9 +1094,9 @@ export class FleetDataStore
           is_simulated: true,
           telemetry_source: 'DEMO_SIMULATION',
         });
-      } else if (bus.id === '00000000-0000-4000-8000-000000000003') {
+      } else if (bus.id === '00000000-0000-4000-8000-000000000003' && this.demoState.enabled) {
         // Bus 08
-        const route = this.routes.find(r => r.id === '00000000-0000-4000-8000-000000000008') ?? this.routes[0]!;
+        const route = (bus.assigned_route_id ? this.routes.find(r => r.id === bus.assigned_route_id) : null) ?? this.routes[2] ?? this.routes[0]!;
         const pIndex = Math.min(this.busProgress.get(bus.id) ?? 4, (route.polyline?.length ?? 1) - 1);
         const [lat, lng] = route.polyline[pIndex] ?? [17.3210, 78.4350];
         const ageSec = 78; // older than 60s -> STALE
@@ -1078,6 +1104,7 @@ export class FleetDataStore
           bus_id: bus.id,
           bus_number: bus.bus_number,
           registration: bus.registration,
+          display_name: bus.display_name ?? null,
           route_id: route.id,
           route_name: route.name,
           state: 'STALE',
@@ -1102,15 +1129,16 @@ export class FleetDataStore
           is_simulated: true,
           telemetry_source: 'DEMO_SIMULATION',
         });
-      } else if (bus.id === '00000000-0000-4000-8000-000000000004') {
+      } else if (bus.id === '00000000-0000-4000-8000-000000000004' && this.demoState.enabled) {
         // Bus 21
-        const route = this.routes.find(r => r.id === '00000000-0000-4000-8000-000000000021') ?? this.routes[0]!;
+        const route = (bus.assigned_route_id ? this.routes.find(r => r.id === bus.assigned_route_id) : null) ?? this.routes[3] ?? this.routes[0]!;
         const pIndex = Math.min(this.busProgress.get(bus.id) ?? 5, (route.polyline?.length ?? 1) - 1);
         const [lat, lng] = route.polyline[pIndex] ?? [17.3980, 78.3990];
         snapshots.push({
           bus_id: bus.id,
           bus_number: bus.bus_number,
           registration: bus.registration,
+          display_name: bus.display_name ?? null,
           route_id: route.id,
           route_name: route.name,
           state: 'LIVE_PHONE',
@@ -1137,12 +1165,14 @@ export class FleetDataStore
         });
       } else if (bus.id === '00000000-0000-4000-8000-000000000005') {
         // Bus 16
+        const route = (bus.assigned_route_id ? this.routes.find(r => r.id === bus.assigned_route_id) : null) ?? this.routes[0]!;
         snapshots.push({
           bus_id: bus.id,
           bus_number: bus.bus_number,
           registration: bus.registration,
-          route_id: '00000000-0000-4000-8000-000000000012',
-          route_name: 'Route 12: Mehdipatnam Express',
+          display_name: bus.display_name ?? null,
+          route_id: route.id,
+          route_name: route.name,
           state: 'UNAVAILABLE',
           state_label: 'Location unavailable',
           latitude: null,
@@ -1159,12 +1189,14 @@ export class FleetDataStore
         });
       } else if (bus.id === '00000000-0000-4000-8000-000000000006') {
         // Bus 03
+        const route = (bus.assigned_route_id ? this.routes.find(r => r.id === bus.assigned_route_id) : null) ?? this.routes[1] ?? this.routes[0]!;
         snapshots.push({
           bus_id: bus.id,
           bus_number: bus.bus_number,
           registration: bus.registration,
-          route_id: '00000000-0000-4000-8000-000000000005',
-          route_name: 'Route 05: Kukatpally IT Corridor',
+          display_name: bus.display_name ?? null,
+          route_id: route.id,
+          route_name: route.name,
           state: 'NOT_RUNNING',
           state_label: 'Not running • Next trip at 16:15 PM',
           latitude: null,
@@ -1180,16 +1212,19 @@ export class FleetDataStore
           service_date: serviceDate,
         });
       } else {
-        // Newly added bus by Transport Admin
-        const defaultRoute = this.routes[0]!;
+        // Newly added bus or unsimulated operational bus
+        const assignedRoute = (bus.assigned_route_id ? this.routes.find(r => r.id === bus.assigned_route_id) : null) ?? this.routes[0]!;
+        const activeLink = this.links.find(l => l.bus_id === bus.id && !l.valid_to);
+        const dev = activeLink ? this.devices.find(d => d.device_id === activeLink.device_id) : null;
         snapshots.push({
           bus_id: bus.id,
           bus_number: bus.bus_number,
           registration: bus.registration,
-          route_id: defaultRoute.id,
-          route_name: defaultRoute.name,
-          state: 'NOT_RUNNING',
-          state_label: 'Standby • In Depot (New Fleet Addition)',
+          display_name: bus.display_name ?? null,
+          route_id: assignedRoute.id,
+          route_name: assignedRoute.name,
+          state: activeLink ? 'UNAVAILABLE' : 'NOT_RUNNING',
+          state_label: activeLink ? (dev?.last_reported_at ? 'Hardware offline' : 'Awaiting initial telemetry signal') : 'Standby • In Depot (No Tracker Assigned)',
           latitude: null,
           longitude: null,
           speed_kmh: null,
@@ -1366,52 +1401,215 @@ export class FleetDataStore
   // --- Buses CRUD ---
 
   getBuses(): BusRecord[] {
-    return this.buses;
+    return this.buses.map(b => {
+      const activeLink = this.links.find(l => l.bus_id === b.id && !l.valid_to);
+      const assignedRoute = b.assigned_route_id ? this.routes.find(r => r.id === b.assigned_route_id) : null;
+      return {
+        ...b,
+        display_name: b.display_name ?? null,
+        assigned_route_id: b.assigned_route_id ?? null,
+        assigned_route_name: assignedRoute?.name ?? null,
+        assigned_device_id: activeLink?.device_id ?? null,
+      };
+    });
   }
 
   getBusById(id: string): BusRecord | null {
-    return this.buses.find(b => b.id === id) ?? null;
+    const b = this.buses.find(x => x.id === id);
+    if (!b) return null;
+    const activeLink = this.links.find(l => l.bus_id === b.id && !l.valid_to);
+    const assignedRoute = b.assigned_route_id ? this.routes.find(r => r.id === b.assigned_route_id) : null;
+    return {
+      ...b,
+      display_name: b.display_name ?? null,
+      assigned_route_id: b.assigned_route_id ?? null,
+      assigned_route_name: assignedRoute?.name ?? null,
+      assigned_device_id: activeLink?.device_id ?? null,
+    };
   }
 
-  createBus(input: {
-    bus_number: string;
-    registration: string;
-    seating_capacity: number;
-    status: 'ACTIVE' | 'MAINTENANCE' | 'RETIRED';
-    insurance_expiry: string;
-    fitness_expiry: string;
-    pollution_expiry: string;
-    permit_expiry: string;
-  }): BusRecord {
+  createBus(
+    input: {
+      bus_number: string;
+      registration: string;
+      display_name?: string | null | undefined;
+      assigned_route_id?: string | null | undefined;
+      seating_capacity?: number | undefined;
+      status?: 'ACTIVE' | 'MAINTENANCE' | 'RETIRED' | undefined;
+      insurance_expiry?: string | undefined;
+      fitness_expiry?: string | undefined;
+      pollution_expiry?: string | undefined;
+      permit_expiry?: string | undefined;
+    },
+    actorEmail = 'transport.coord@vjit.ac.in',
+    actorRole: UserRole = 'COR'
+  ): BusRecord {
+    // 1. Uniqueness validation
+    const numClean = input.bus_number.trim().toLowerCase();
+    if (this.buses.some(b => b.bus_number.trim().toLowerCase() === numClean)) {
+      throw new Error(`Duplicate bus number: Bus "${input.bus_number}" already exists in fleet records.`);
+    }
+
+    const regNorm = input.registration.replace(/\s+/g, '').toUpperCase();
+    if (this.buses.some(b => b.registration.replace(/\s+/g, '').toUpperCase() === regNorm)) {
+      throw new Error(`Duplicate registration: Vehicle registration "${input.registration}" already exists in fleet records.`);
+    }
+
+    // 2. Route validation
+    if (input.assigned_route_id) {
+      const routeExists = this.routes.some(r => r.id === input.assigned_route_id);
+      if (!routeExists) {
+        throw new Error(`Route validation failed: Selected route ${input.assigned_route_id} does not exist.`);
+      }
+    }
+
+    const now = new Date().toISOString();
     const id = `00000000-0000-4000-8000-${Date.now().toString(16).padStart(12, '0')}`;
     const newBus: BusRecord = {
       id,
-      bus_number: input.bus_number,
-      registration: input.registration,
-      seating_capacity: input.seating_capacity,
-      status: input.status,
-      insurance_expiry: input.insurance_expiry,
-      fitness_expiry: input.fitness_expiry,
-      pollution_expiry: input.pollution_expiry,
-      permit_expiry: input.permit_expiry,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
+      bus_number: input.bus_number.trim(),
+      registration: input.registration.trim().toUpperCase(),
+      display_name: input.display_name?.trim() || null,
+      assigned_route_id: input.assigned_route_id || null,
+      seating_capacity: input.seating_capacity ?? 50,
+      status: input.status ?? 'ACTIVE',
+      insurance_expiry: input.insurance_expiry || '2027-06-30',
+      fitness_expiry: input.fitness_expiry || '2027-04-30',
+      pollution_expiry: input.pollution_expiry || '2026-12-31',
+      permit_expiry: input.permit_expiry || '2028-06-30',
+      created_at: now,
+      updated_at: now,
     };
     this.buses.push(newBus);
+
+    this.recordAuditLog(
+      actorEmail,
+      actorRole,
+      'CREATE_BUS',
+      'BUS',
+      newBus.id,
+      `Bus ${newBus.bus_number} (${newBus.registration}) registered with capacity ${newBus.seating_capacity}`,
+      null,
+      newBus as unknown as Record<string, unknown>,
+    );
+
     this.savePersistedStore();
-    return newBus;
+    return this.getBusById(newBus.id)!;
   }
 
-  updateBus(id: string, updates: Partial<BusRecord>): BusRecord | null {
+  updateBus(
+    id: string,
+    updates: {
+      bus_number?: string | undefined;
+      registration?: string | undefined;
+      display_name?: string | null | undefined;
+      assigned_route_id?: string | null | undefined;
+      seating_capacity?: number | undefined;
+      status?: 'ACTIVE' | 'MAINTENANCE' | 'RETIRED' | undefined;
+      insurance_expiry?: string | undefined;
+      fitness_expiry?: string | undefined;
+      pollution_expiry?: string | undefined;
+      permit_expiry?: string | undefined;
+    },
+    actorEmail = 'transport.coord@vjit.ac.in',
+    actorRole: UserRole = 'COR'
+  ): BusRecord | null {
     const index = this.buses.findIndex(b => b.id === id);
     if (index === -1) return null;
+    const current = this.buses[index]!;
+
+    // Check duplicate bus_number if changing
+    if (updates.bus_number && updates.bus_number.trim().toLowerCase() !== current.bus_number.trim().toLowerCase()) {
+      const numClean = updates.bus_number.trim().toLowerCase();
+      if (this.buses.some(b => b.id !== id && b.bus_number.trim().toLowerCase() === numClean)) {
+        throw new Error(`Duplicate bus number: Bus "${updates.bus_number}" is already assigned to another vehicle.`);
+      }
+    }
+
+    // Check duplicate registration if changing
+    if (updates.registration) {
+      const regNorm = updates.registration.replace(/\s+/g, '').toUpperCase();
+      if (this.buses.some(b => b.id !== id && b.registration.replace(/\s+/g, '').toUpperCase() === regNorm)) {
+        throw new Error(`Duplicate registration: Vehicle registration "${updates.registration}" is already assigned to another vehicle.`);
+      }
+    }
+
+    // Validate assigned_route_id if changing
+    if (updates.assigned_route_id) {
+      const routeExists = this.routes.some(r => r.id === updates.assigned_route_id);
+      if (!routeExists) {
+        throw new Error(`Route validation failed: Selected route ${updates.assigned_route_id} does not exist.`);
+      }
+    }
+
+    const oldRecord = { ...current };
     this.buses[index] = {
-      ...this.buses[index]!,
-      ...updates,
+      ...current,
+      ...(updates.bus_number !== undefined ? { bus_number: updates.bus_number } : {}),
+      ...(updates.registration !== undefined ? { registration: updates.registration } : {}),
+      ...(updates.display_name !== undefined ? { display_name: updates.display_name } : {}),
+      ...(updates.assigned_route_id !== undefined ? { assigned_route_id: updates.assigned_route_id } : {}),
+      ...(updates.seating_capacity !== undefined ? { seating_capacity: updates.seating_capacity } : {}),
+      ...(updates.status !== undefined ? { status: updates.status } : {}),
+      ...(updates.insurance_expiry !== undefined ? { insurance_expiry: updates.insurance_expiry } : {}),
+      ...(updates.fitness_expiry !== undefined ? { fitness_expiry: updates.fitness_expiry } : {}),
+      ...(updates.pollution_expiry !== undefined ? { pollution_expiry: updates.pollution_expiry } : {}),
+      ...(updates.permit_expiry !== undefined ? { permit_expiry: updates.permit_expiry } : {}),
       updated_at: new Date().toISOString(),
     };
+
+    this.recordAuditLog(
+      actorEmail,
+      actorRole,
+      'UPDATE_BUS',
+      'BUS',
+      id,
+      `Bus ${current.bus_number} updated`,
+      oldRecord as unknown as Record<string, unknown>,
+      this.buses[index] as unknown as Record<string, unknown>,
+    );
+
     this.savePersistedStore();
     return this.buses[index]!;
+  }
+
+  assignBusToRoute(
+    busId: string,
+    routeId: string | null,
+    actorEmail = 'transport.coord@vjit.ac.in',
+    actorRole: UserRole = 'COR'
+  ): { success: boolean; bus?: BusRecord; error?: string } {
+    const bus = this.buses.find(b => b.id === busId);
+    if (!bus) {
+      return { success: false, error: `Bus ${busId} not found.` };
+    }
+
+    let routeName = 'Unassigned';
+    if (routeId) {
+      const route = this.routes.find(r => r.id === routeId);
+      if (!route) {
+        return { success: false, error: `Route ${routeId} not found.` };
+      }
+      routeName = route.name;
+    }
+
+    const oldRouteId = bus.assigned_route_id;
+    bus.assigned_route_id = routeId;
+    bus.updated_at = new Date().toISOString();
+
+    this.recordAuditLog(
+      actorEmail,
+      actorRole,
+      'ASSIGN_ROUTE',
+      'BUS',
+      busId,
+      `Associated bus ${bus.bus_number} to route ${routeName}`,
+      { assigned_route_id: oldRouteId },
+      { assigned_route_id: routeId },
+    );
+
+    this.savePersistedStore();
+    return { success: true, bus: this.getBusById(bus.id)! };
   }
 
   deactivateBus(id: string): BusRecord | null {
@@ -1424,19 +1622,168 @@ export class FleetDataStore
     const now = Date.now();
     return this.devices.map(d => {
       const lastRep = (d as any).last_reported_at;
-      let connectivity: 'ONLINE' | 'STOPPED_REPORTING' | 'STANDBY' = 'STANDBY';
+      let connectivity: 'ONLINE' | 'STOPPED_REPORTING' | 'STANDBY' | 'OFFLINE' = 'STANDBY';
       let ageSeconds: number | null = null;
-      if (lastRep) {
+      if (d.status === 'REVOKED') {
+        connectivity = 'OFFLINE';
+      } else if (lastRep) {
         ageSeconds = Math.max(0, Math.round((now - new Date(lastRep).getTime()) / 1000));
         connectivity = ageSeconds <= 60 ? 'ONLINE' : 'STOPPED_REPORTING';
       }
+
+      const activeLink = this.links.find(l => l.device_id === d.device_id && !l.valid_to);
+      const assignedBus = activeLink ? this.buses.find(b => b.id === activeLink.bus_id) : null;
+      const assignedRoute = assignedBus?.assigned_route_id
+        ? this.routes.find(r => r.id === assignedBus.assigned_route_id)
+        : null;
+
       return {
-        ...d,
+        id: d.id,
+        device_id: d.device_id,
+        serial_number: d.serial_number,
+        model: d.model || 'Teltonika FMB920',
+        nickname: d.nickname || undefined,
+        imei: d.imei,
+        iccid: d.iccid,
+        status: d.status,
+        firmware_version: d.firmware_version,
+        first_used_at: d.first_used_at,
+        created_at: d.created_at,
         last_reported_at: lastRep ?? null,
         connectivity_status: connectivity,
         reporting_age_seconds: ageSeconds,
+        assigned_bus_id: activeLink?.bus_id ?? null,
+        assigned_bus_number: activeLink?.bus_number ?? null,
+        assigned_route_name: assignedRoute?.name ?? null,
       };
     });
+  }
+
+  registerDevice(
+    input: {
+      device_id: string;
+      serial_number: string;
+      model?: string | undefined;
+      nickname?: string | undefined;
+      imei: string;
+      iccid?: string | undefined;
+      sim_number?: string | undefined;
+      auth_token?: string | undefined;
+      firmware_version?: string | undefined;
+      status?: 'PROVISIONED' | 'ACTIVE' | 'REVOKED' | undefined;
+    },
+    actorEmail = 'transport.coord@vjit.ac.in',
+    actorRole: UserRole = 'COR'
+  ): { success: boolean; device?: DeviceRecord; error?: string } {
+    const devIdClean = input.device_id.trim().toUpperCase();
+    if (this.devices.some(d => d.device_id.toUpperCase() === devIdClean)) {
+      return { success: false, error: `Device identifier "${input.device_id}" is already registered.` };
+    }
+
+    const serialClean = input.serial_number.trim().toLowerCase();
+    if (this.devices.some(d => d.serial_number.trim().toLowerCase() === serialClean)) {
+      return { success: false, error: `Hardware serial number "${input.serial_number}" is already registered.` };
+    }
+
+    if (this.devices.some(d => d.imei === input.imei)) {
+      return { success: false, error: `Cellular IMEI "${input.imei}" is already registered.` };
+    }
+
+    const now = new Date().toISOString();
+    const id = `00000000-0000-4000-8000-${Date.now().toString(16).padStart(12, '0')}`;
+    const iccid = input.iccid || ('89911012' + input.imei.slice(0, 11) + '0');
+    const newDevice: DeviceRecord = {
+      id,
+      device_id: devIdClean,
+      serial_number: input.serial_number.trim(),
+      model: input.model || 'Teltonika FMB920',
+      nickname: input.nickname?.trim() || undefined,
+      imei: input.imei,
+      iccid,
+      status: input.status || 'PROVISIONED',
+      firmware_version: input.firmware_version || '1.2.0',
+      first_used_at: null,
+      created_at: now,
+    };
+    this.devices.push(newDevice);
+
+    // Register initial token hashes in deviceTokens map
+    const defaultSecret = 'vjit_device_token_hmac_entropy_keyval_cluster_987';
+    const cleanId = devIdClean.toLowerCase().replace(/[^a-z0-9]/g, '');
+    const devToken = input.auth_token || `vjit_${cleanId}_token_auth_secret_cluster_v1_43`;
+    const devHash = hashDeviceToken(devToken, defaultSecret);
+    this.deviceTokens.set(devIdClean, [
+      { key_version: 'v1', token_hash: devHash, is_revoked: false }
+    ]);
+
+    this.recordAuditLog(
+      actorEmail,
+      actorRole,
+      'REGISTER_DEVICE',
+      'DEVICE',
+      newDevice.device_id,
+      `Hardware GPS tracker registered: ${newDevice.device_id} (SN: ${newDevice.serial_number}, Model: ${newDevice.model})`,
+      null,
+      {
+        device_id: newDevice.device_id,
+        serial_number: newDevice.serial_number,
+        model: newDevice.model,
+        imei: newDevice.imei,
+      },
+    );
+
+    this.savePersistedStore();
+    return { success: true, device: this.getDevices().find(d => d.device_id === devIdClean)! };
+  }
+
+  updateDevice(
+    deviceId: string,
+    updates: {
+      model?: string | undefined;
+      nickname?: string | undefined;
+      firmware_version?: string | undefined;
+      status?: 'ACTIVE' | 'PROVISIONED' | 'REVOKED' | undefined;
+    },
+    actorEmail = 'transport.coord@vjit.ac.in',
+    actorRole: UserRole = 'COR'
+  ): { success: boolean; device?: DeviceRecord; error?: string } {
+    const dev = this.devices.find(d => d.device_id === deviceId || d.id === deviceId);
+    if (!dev) {
+      return { success: false, error: `Device ${deviceId} not found.` };
+    }
+
+    const oldRecord = { ...dev };
+    if (updates.model) dev.model = updates.model;
+    if (updates.nickname !== undefined) dev.nickname = updates.nickname;
+    if (updates.firmware_version) dev.firmware_version = updates.firmware_version;
+    if (updates.status) {
+      dev.status = updates.status;
+      if (updates.status === 'REVOKED') {
+        // Automatically unlink and clear liveTelemetry
+        const now = new Date().toISOString();
+        this.links.forEach(l => {
+          if (l.device_id === dev.device_id && !l.valid_to) {
+            l.valid_to = now;
+            l.reason = `Device revoked by ${actorEmail}`;
+            this.liveTelemetry.delete(l.bus_id);
+          }
+        });
+      }
+    }
+
+    this.recordAuditLog(
+      actorEmail,
+      actorRole,
+      'UPDATE_DEVICE',
+      'DEVICE',
+      dev.device_id,
+      `Hardware tracker ${dev.device_id} updated`,
+      oldRecord as unknown as Record<string, unknown>,
+      dev as unknown as Record<string, unknown>,
+    );
+
+    this.savePersistedStore();
+    return { success: true, device: this.getDevices().find(d => d.device_id === dev.device_id)! };
   }
 
   getLinks(): AdminDeviceBusLinkRecord[] {
@@ -1444,26 +1791,35 @@ export class FleetDataStore
   }
 
   linkDeviceToBus(deviceId: string, busId: string, linkedBy: string): { success: boolean; link?: AdminDeviceBusLinkRecord; error?: string } {
-    const device = this.devices.find(d => d.device_id === deviceId);
+    const device = this.devices.find(d => d.device_id === deviceId || d.id === deviceId);
     if (!device) {
       return { success: false, error: `Device ${deviceId} not found.` };
+    }
+    if (device.status === 'REVOKED') {
+      return { success: false, error: `Cannot assign revoked hardware device ${deviceId}. Please reactivate or replace unit.` };
     }
     const bus = this.buses.find(b => b.id === busId);
     if (!bus) {
       return { success: false, error: `Bus ${busId} not found.` };
     }
+    if (bus.status === 'RETIRED') {
+      return { success: false, error: `Cannot assign tracker to retired bus ${bus.bus_number}.` };
+    }
 
-    // Close any previous link for this device or bus
+    // Close any previous link for this device or bus (1:1 constraint)
     const now = new Date().toISOString();
     this.links.forEach(l => {
-      if ((l.device_id === deviceId || l.bus_id === busId) && !l.valid_to) {
+      if ((l.device_id === device.device_id || l.bus_id === busId) && !l.valid_to) {
         l.valid_to = now;
+        l.reason = l.device_id === device.device_id ? `Reassigned to bus ${bus.bus_number}` : `Replaced by device ${device.device_id}`;
+        // CRITICAL: clear old bus live telemetry so it doesn't move or show stale position!
+        this.liveTelemetry.delete(l.bus_id);
       }
     });
 
     const newLink: AdminDeviceBusLinkRecord = {
       id: `00000000-0000-4000-8000-${Date.now().toString(16).padStart(12, '0')}`,
-      device_id: deviceId,
+      device_id: device.device_id,
       bus_id: busId,
       bus_number: bus.bus_number,
       valid_from: now,
@@ -1472,6 +1828,18 @@ export class FleetDataStore
       reason: 'Console administrator link update',
     };
     this.links.push(newLink);
+
+    this.recordAuditLog(
+      linkedBy,
+      this.currentUser.role,
+      'LINK_DEVICE',
+      'DEVICE',
+      device.device_id,
+      `Hardware tracker ${device.device_id} linked to ${bus.bus_number} (${bus.registration})`,
+      null,
+      { device_id: device.device_id, bus_id: busId, bus_number: bus.bus_number },
+    );
+
     this.savePersistedStore();
     return { success: true, link: newLink };
   }
@@ -1480,15 +1848,26 @@ export class FleetDataStore
     const now = new Date().toISOString();
     let found = false;
     this.links.forEach(l => {
-      if (l.device_id === deviceId && !l.valid_to) {
+      if ((l.device_id === deviceId || (this.devices.find(d => d.id === deviceId)?.device_id === l.device_id)) && !l.valid_to) {
         l.valid_to = now;
         l.reason = `Unlinked by ${unlinkedBy}`;
+        this.liveTelemetry.delete(l.bus_id);
         found = true;
       }
     });
     if (!found) {
       return { success: false, error: `No active association found for device ${deviceId}.` };
     }
+
+    this.recordAuditLog(
+      unlinkedBy,
+      this.currentUser.role,
+      'UNLINK_DEVICE',
+      'DEVICE',
+      deviceId,
+      `Hardware tracker ${deviceId} unlinked from bus`,
+    );
+
     this.savePersistedStore();
     return { success: true };
   }
@@ -1498,24 +1877,20 @@ export class FleetDataStore
     status: 'ACTIVE' | 'PROVISIONED' | 'REVOKED',
     actorEmail: string,
   ): { success: boolean; device?: DeviceRecord; error?: string } {
-    const dev = this.devices.find(d => d.device_id === deviceId || d.id === deviceId);
-    if (!dev) {
-      return { success: false, error: `Device ${deviceId} not found.` };
+    const res = this.updateDevice(deviceId, { status }, actorEmail, this.currentUser.role);
+    if (res.success && res.device) {
+      this.recordAuditLog(
+        actorEmail,
+        this.currentUser.role,
+        'UPDATE_DEVICE_STATUS',
+        'DEVICE',
+        res.device.device_id,
+        `Device status updated to ${status}`,
+        null,
+        { status },
+      );
     }
-    const oldStatus = dev.status;
-    dev.status = status;
-    this.recordAuditLog(
-      actorEmail,
-      this.currentUser.role,
-      'UPDATE_DEVICE_STATUS',
-      'DEVICE',
-      dev.device_id,
-      `Hardware status changed from ${oldStatus} to ${status}`,
-      { status: oldStatus },
-      { status },
-    );
-    this.savePersistedStore();
-    return { success: true, device: dev };
+    return res;
   }
 
   // --- Alerts ---
@@ -2019,7 +2394,7 @@ export class FleetDataStore
     try {
       const resolvedBackup = path.resolve(backupPath);
       const backupDir = path.resolve(path.dirname(this.persistencePath), 'backups');
-      if (!resolvedBackup.startsWith(backupDir)) {
+      if (!resolvedBackup.toLowerCase().startsWith(backupDir.toLowerCase())) {
         return { success: false, error: 'Access denied: Backup path must reside within the authorized backups directory.' };
       }
       if (!fs.existsSync(resolvedBackup)) {

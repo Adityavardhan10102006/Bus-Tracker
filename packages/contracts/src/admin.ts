@@ -8,6 +8,10 @@ export const busRecordSchema = z.object({
   id: z.string().uuid(),
   bus_number: z.string().min(1).max(20),
   registration: z.string().min(1).max(30),
+  display_name: z.string().min(1).max(100).nullable().optional(),
+  assigned_route_id: z.string().uuid().nullable().optional(),
+  assigned_route_name: z.string().nullable().optional(),
+  assigned_device_id: z.string().nullable().optional(),
   seating_capacity: z.number().int().min(1).max(150),
   status: busStatusSchema,
   insurance_expiry: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'YYYY-MM-DD format required'),
@@ -19,13 +23,29 @@ export const busRecordSchema = z.object({
 });
 export type BusRecord = z.infer<typeof busRecordSchema>;
 
+export const createBusInputSchema = z.object({
+  bus_number: z.string().min(1).max(20),
+  registration: z.string().min(1).max(30),
+  display_name: z.string().max(100).optional(),
+  assigned_route_id: z.string().uuid().nullable().optional(),
+  seating_capacity: z.number().int().min(1).max(150).optional().default(50),
+  status: busStatusSchema.optional().default('ACTIVE'),
+  insurance_expiry: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  fitness_expiry: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  pollution_expiry: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  permit_expiry: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+});
+export type CreateBusInput = z.infer<typeof createBusInputSchema>;
+
 export const deviceStatusSchema = z.enum(['PROVISIONED', 'ACTIVE', 'REVOKED']);
 export type DeviceStatus = z.infer<typeof deviceStatusSchema>;
 
 export const deviceRecordSchema = z.object({
   id: z.string().uuid(),
-  device_id: z.string().regex(/^HW_[0-9A-Z]{3,4}$/, 'Pattern HW_NNN required'),
+  device_id: z.string().regex(/^HW_[0-9A-Za-z_-]{3,24}$/, 'Pattern HW_NNN required'),
   serial_number: z.string().min(1).max(64),
+  model: z.string().optional(),
+  nickname: z.string().optional(),
   imei: z.string().regex(/^\d{15}$/, 'IMEI must be exactly 15 digits'),
   iccid: z.string().regex(/^\d{19,20}$/, 'ICCID must be 19 or 20 digits'),
   status: deviceStatusSchema,
@@ -33,10 +53,54 @@ export const deviceRecordSchema = z.object({
   first_used_at: z.string().datetime({ offset: true }).nullable(),
   created_at: z.string().datetime({ offset: true }),
   last_reported_at: z.string().datetime({ offset: true }).nullable().optional(),
-  connectivity_status: z.enum(['ONLINE', 'STOPPED_REPORTING', 'STANDBY']).optional(),
+  connectivity_status: z.enum(['ONLINE', 'STOPPED_REPORTING', 'STANDBY', 'OFFLINE']).optional(),
   reporting_age_seconds: z.number().nullable().optional(),
+  assigned_bus_id: z.string().uuid().nullable().optional(),
+  assigned_bus_number: z.string().nullable().optional(),
+  assigned_route_name: z.string().nullable().optional(),
 });
 export type DeviceRecord = z.infer<typeof deviceRecordSchema>;
+
+export const updateBusInputSchema = z.object({
+  bus_number: z.string().min(1).max(20).optional(),
+  registration: z.string().min(1).max(30).optional(),
+  display_name: z.string().max(100).nullable().optional(),
+  assigned_route_id: z.string().uuid().nullable().optional(),
+  seating_capacity: z.number().int().min(1).max(150).optional(),
+  status: busStatusSchema.optional(),
+  insurance_expiry: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  fitness_expiry: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  pollution_expiry: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  permit_expiry: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+});
+export type UpdateBusInput = z.infer<typeof updateBusInputSchema>;
+
+export const createDeviceInputSchema = z.object({
+  device_id: z.string().regex(/^HW_[0-9A-Za-z_-]{3,24}$/, 'Pattern HW_NNN required (e.g. HW_1042)'),
+  serial_number: z.string().min(3).max(64),
+  model: z.string().min(2).max(64).optional().default('Teltonika FMB920'),
+  nickname: z.string().max(64).optional(),
+  imei: z.string().regex(/^\d{15}$/, 'IMEI must be exactly 15 digits'),
+  iccid: z.string().regex(/^\d{19,20}$/, 'ICCID must be 19 or 20 digits').optional(),
+  sim_number: z.string().max(64).optional(),
+  firmware_version: z.string().regex(/^\d+\.\d+\.\d+$/).optional().default('1.2.0'),
+  status: deviceStatusSchema.optional().default('PROVISIONED'),
+  auth_token: z.string().optional(),
+});
+export type CreateDeviceInput = z.infer<typeof createDeviceInputSchema>;
+
+export const updateDeviceInputSchema = z.object({
+  model: z.string().min(2).max(64).optional(),
+  nickname: z.string().max(64).optional(),
+  firmware_version: z.string().regex(/^\d+\.\d+\.\d+$/).optional(),
+  status: deviceStatusSchema.optional(),
+});
+export type UpdateDeviceInput = z.infer<typeof updateDeviceInputSchema>;
+
+export const assignRouteInputSchema = z.object({
+  route_id: z.string().uuid().nullable(),
+});
+export type AssignRouteInput = z.infer<typeof assignRouteInputSchema>;
 
 export const deviceBusLinkRecordSchema = z.object({
   id: z.string().uuid(),

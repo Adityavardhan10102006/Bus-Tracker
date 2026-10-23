@@ -25,6 +25,7 @@ export const busSnapshotSchema = z.object({
   bus_id: z.string().uuid(),
   bus_number: z.string(),
   registration: z.string(),
+  display_name: z.string().nullable().optional(),
   route_id: z.string().uuid(),
   route_name: z.string(),
   state: trackingIntegrityStateSchema,
