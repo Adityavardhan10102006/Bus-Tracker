@@ -2298,19 +2298,27 @@ export function renderAdminHtml(): string {
           ? (d.reporting_age_seconds !== null ? d.reporting_age_seconds + 's ago' : d.last_reported_at.slice(11, 19) + ' UTC')
           : '<span style="color:var(--text-muted);">&mdash; Never</span>';
 
+        let devStatusClass = 'badge-active';
+        if (d.status === 'PROVISIONED') devStatusClass = 'badge-idle';
+        if (d.status === 'REVOKED') devStatusClass = 'badge-unavail';
+
         row.innerHTML = \`
           <td><strong>\${d.device_id}</strong></td>
           <td><code>\${d.serial_number}</code><br><span style="font-size:11px; color:var(--text-muted);">IMEI: \${d.imei}</span></td>
           <td>\${signalBadge}</td>
-          <td><span class="status-badge badge-active">\${d.status}</span></td>
+          <td><span class="status-badge \${devStatusClass}">\${d.status}</span></td>
           <td>v\${d.firmware_version}</td>
           <td>\${activeLink ? '<strong style="color:var(--brand-navy);">' + activeLink.bus_number + '</strong>' : '<span style="color:var(--text-muted);">Unassociated (In Pool)</span>'}</td>
           <td>\${lastReportText}</td>
           <td>
-            \${canLink ? \`
-              \${activeLink ? \`<button class="btn-table-action btn-table-danger" style="margin-right:6px;" onclick="unlinkDevice('\${d.device_id}')">Unlink</button>\` : ''}
-              <button class="btn-table-action" onclick="openLinkModal('\${d.device_id}')">\${activeLink ? 'Reassign' : 'Associate Bus'}</button>
-            \` : isTec ? \`<span style="font-size:11px; color:var(--text-muted); font-weight:600;">Rule E.6 Blocked</span>\` : '&mdash;'}
+            <div style="display:flex; flex-wrap:wrap; gap:4px;">
+              \${canLink ? \`
+                \${activeLink ? \`<button class="btn-table-action btn-table-danger" onclick="unlinkDevice('\${d.device_id}')">Unlink</button>\` : ''}
+                <button class="btn-table-action" onclick="openLinkModal('\${d.device_id}')">\${activeLink ? 'Reassign' : 'Associate'}</button>
+                \${d.status !== 'REVOKED' ? \`<button class="btn-table-action btn-table-danger" onclick="updateDeviceStatus('\${d.device_id}', 'REVOKED')" title="Revoke compromised device">Revoke</button>\` : \`<button class="btn-table-action" style="color:var(--state-live); border-color:var(--state-live);" onclick="updateDeviceStatus('\${d.device_id}', 'ACTIVE')" title="Reactivate device">Reactivate</button>\`}
+                \${d.status === 'PROVISIONED' ? \`<button class="btn-table-action" style="color:var(--state-live); border-color:var(--state-live);" onclick="updateDeviceStatus('\${d.device_id}', 'ACTIVE')" title="Activate provisioned tracker">Activate</button>\` : ''}
+              \` : isTec ? \`<span style="font-size:11px; color:var(--text-muted); font-weight:600;">Rule E.6 Blocked</span>\` : '&mdash;'}
+            </div>
           </td>
         \`;
         tbody.appendChild(row);
@@ -2382,6 +2390,26 @@ export function renderAdminHtml(): string {
         }
       } catch (e) {
         showFeedback('Request failed', true);
+      }
+    };
+
+    window.updateDeviceStatus = async (deviceId, status) => {
+      const actionName = status === 'REVOKED' ? 'REVOKE and BLOCK' : (status === 'ACTIVE' ? 'ACTIVATE' : 'change status of');
+      if (!confirm('Are you sure you want to ' + actionName + ' GPS tracker ' + deviceId + '?\n\nRevoking a device immediately terminates its cellular telemetry authorization.')) return;
+      try {
+        const res = await fetch('/api/v1/devices/' + deviceId + '/status', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status })
+        }).then(r => r.json());
+        if (res.success) {
+          showFeedback('Device ' + deviceId + ' status updated to ' + status + '.');
+          await loadAdminData();
+        } else {
+          showFeedback(res.error?.message || 'Failed to update device status.', true);
+        }
+      } catch (err) {
+        showFeedback('Network error updating device status', true);
       }
     };
 

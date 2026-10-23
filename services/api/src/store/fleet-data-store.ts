@@ -1493,6 +1493,31 @@ export class FleetDataStore
     return { success: true };
   }
 
+  updateDeviceStatus(
+    deviceId: string,
+    status: 'ACTIVE' | 'PROVISIONED' | 'REVOKED',
+    actorEmail: string,
+  ): { success: boolean; device?: DeviceRecord; error?: string } {
+    const dev = this.devices.find(d => d.device_id === deviceId || d.id === deviceId);
+    if (!dev) {
+      return { success: false, error: `Device ${deviceId} not found.` };
+    }
+    const oldStatus = dev.status;
+    dev.status = status;
+    this.recordAuditLog(
+      actorEmail,
+      this.currentUser.role,
+      'UPDATE_DEVICE_STATUS',
+      'DEVICE',
+      dev.device_id,
+      `Hardware status changed from ${oldStatus} to ${status}`,
+      { status: oldStatus },
+      { status },
+    );
+    this.savePersistedStore();
+    return { success: true, device: dev };
+  }
+
   // --- Alerts ---
 
   getAlerts(): ServiceAlert[] {
@@ -1964,6 +1989,7 @@ export class FleetDataStore
         saved_at: new Date().toISOString(),
         routes: this.routes,
         buses: this.buses,
+        devices: this.devices,
         links: this.links,
         systemSettings: this.systemSettings,
         maintenanceTickets: this.maintenanceTickets,
@@ -1999,6 +2025,16 @@ export class FleetDataStore
             this.buses[idx] = savedBus;
           } else {
             this.buses.push(savedBus);
+          }
+        }
+      }
+      if (Array.isArray(data.devices)) {
+        for (const savedDevice of data.devices) {
+          const idx = this.devices.findIndex(d => d.device_id === savedDevice.device_id || d.id === savedDevice.id);
+          if (idx >= 0) {
+            this.devices[idx] = { ...this.devices[idx], ...savedDevice };
+          } else {
+            this.devices.push(savedDevice);
           }
         }
       }

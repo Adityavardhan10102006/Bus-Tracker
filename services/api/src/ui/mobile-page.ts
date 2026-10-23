@@ -636,6 +636,27 @@ export function renderMobileHtml(): string {
       border-radius: 6px;
     }
 
+    .btn-star-bus {
+      background: transparent;
+      border: none;
+      font-size: 16px;
+      line-height: 1;
+      cursor: pointer;
+      padding: 2px 4px;
+      color: var(--text-muted);
+      transition: transform 0.15s ease, color 0.15s ease;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .btn-star-bus:hover {
+      transform: scale(1.2);
+    }
+    .btn-star-bus.starred {
+      color: #F59E0B;
+      filter: drop-shadow(0 0 4px rgba(245, 158, 11, 0.4));
+    }
+
     .bus-reg-label {
       font-size: 12px;
       color: var(--text-secondary);
@@ -1100,6 +1121,7 @@ export function renderMobileHtml(): string {
           </div>
           <div class="route-tabs-scroll" id="route-chips-container">
             <button class="route-chip active" data-route="ALL">All Corridors</button>
+            <button class="route-chip" data-route="FAVORITES" id="chip-filter-favorites" style="display:inline-flex; align-items:center; gap:4px;">★ Starred</button>
             <button class="route-chip" data-route="00000000-0000-4000-8000-000000000012">R-12 Mehdipatnam</button>
             <button class="route-chip" data-route="00000000-0000-4000-8000-000000000005">R-05 Kukatpally</button>
             <button class="route-chip" data-route="00000000-0000-4000-8000-000000000008">R-08 LB Nagar</button>
@@ -1464,7 +1486,7 @@ export function renderMobileHtml(): string {
     <div class="modal-card">
       <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
         <span style="font-size:11px; font-weight:700; text-transform:uppercase; color:var(--text-muted);" id="modal-stop-sequence">Stop #4</span>
-        <button onclick="document.getElementById('stop-details-modal').classList.remove('open')" style="background:none; border:none; font-size:22px; cursor:pointer; color:var(--text-secondary);">&times;</button>
+        <button onclick="window.closeStopModal()" style="background:none; border:none; font-size:22px; cursor:pointer; color:var(--text-secondary);">&times;</button>
       </div>
       <h3 id="modal-stop-name" style="margin-bottom:4px; font-family:'Outfit'; font-size:17px; color:var(--brand-navy);">Sun City Bandlaguda</h3>
       <p id="modal-stop-corridor" style="margin-bottom:12px; font-size:12.5px; color:var(--text-secondary);">Route 12: Mehdipatnam Express</p>
@@ -1473,12 +1495,12 @@ export function renderMobileHtml(): string {
         <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
           <div>Morning Pickup:</div><div style="font-weight:700; color:var(--brand-navy);" id="modal-stop-morning-time">08:25 AM</div>
           <div>Evening Dropoff:</div><div style="font-weight:700; color:var(--brand-navy);" id="modal-stop-evening-time">04:45 PM</div>
-          <div>Geofence Radius:</div><div style="font-weight:600;">100 meters</div>
+          <div>Geofence Radius:</div><div style="font-weight:600; color:var(--state-live);">100 meters (Highlighted on Map)</div>
           <div>Live Stop Status:</div><div style="font-weight:700; color:var(--state-live);" id="modal-stop-live-status">Approaching</div>
         </div>
       </div>
       
-      <button class="btn-close-modal" onclick="document.getElementById('stop-details-modal').classList.remove('open')">Close</button>
+      <button class="btn-close-modal" onclick="window.closeStopModal()">Close &amp; Dismiss Geofence</button>
     </div>
   </div>
 
@@ -1490,6 +1512,10 @@ export function renderMobileHtml(): string {
       alerts: [],
       selectedBusId: '00000000-0000-4000-8000-000000000001',
       selectedRouteFilter: 'ALL',
+      favoriteBusIds: (function() {
+        try { return JSON.parse(localStorage.getItem('vjit_favorite_buses') || '[]'); } catch(_) { return []; }
+      })(),
+      activeStopGeofence: null,
       currentTab: 'buses',
       currentUser: null,
       searchQuery: '',
@@ -1721,7 +1747,9 @@ export function renderMobileHtml(): string {
     // Render Home Buses List
     function renderBusesList() {
       let filtered = appState.buses;
-      if (appState.selectedRouteFilter !== 'ALL') {
+      if (appState.selectedRouteFilter === 'FAVORITES') {
+        filtered = filtered.filter(b => appState.favoriteBusIds.includes(b.bus_id));
+      } else if (appState.selectedRouteFilter !== 'ALL') {
         filtered = filtered.filter(b => b.route_id === appState.selectedRouteFilter);
       }
       if (appState.searchQuery) {
@@ -1743,7 +1771,11 @@ export function renderMobileHtml(): string {
 
       if (filtered.length === 0) {
         emptyState.style.display = 'block';
-        if (appState.buses.length === 0) {
+        if (appState.selectedRouteFilter === 'FAVORITES') {
+          emptyState.innerHTML = '<div style="font-size:24px; margin-bottom:8px;">⭐️</div>' +
+            '<div style="font-weight:700; font-size:14px; color:var(--brand-navy);">No Starred Buses</div>' +
+            '<p style="font-size:12px; color:var(--text-muted); margin-top:4px;">Tap the ☆ star on any bus card to pin your daily commute for 1-tap tracking.</p>';
+        } else if (appState.buses.length === 0) {
           emptyState.innerHTML = '<div style="font-size:24px; margin-bottom:8px;">🚍</div>' +
             '<div style="font-weight:700; font-size:14px; color:var(--brand-navy);">No buses scheduled</div>' +
             '<p style="font-size:12px; color:var(--text-muted); margin-top:4px;">Coordinators can add buses from the Buses page.</p>';
@@ -1783,6 +1815,9 @@ export function renderMobileHtml(): string {
           ? 'Updated ' + bus.age_seconds + 's ago' + (bus.state === 'STALE' ? ' (Stale)' : '')
           : (bus.state === 'UNAVAILABLE' ? 'No signal received' : 'In depot / standby');
 
+        const isStarred = appState.favoriteBusIds.includes(bus.bus_id);
+        const starBtnHtml = '<button type="button" class="btn-star-bus ' + (isStarred ? 'starred' : '') + '" onclick="event.stopPropagation(); window.toggleFavoriteBus(\\\'' + bus.bus_id + '\\\');" aria-label="' + (isStarred ? 'Remove from favorites' : 'Add to favorites') + '" title="' + (isStarred ? 'Starred bus' : 'Star this bus') + '">' + (isStarred ? '★' : '☆') + '</button>';
+
         const card = document.createElement('div');
         card.className = 'bus-card-vertical';
         card.onclick = () => openBusDetail(bus.bus_id);
@@ -1791,6 +1826,7 @@ export function renderMobileHtml(): string {
           <div class="bus-card-header">
             <div class="bus-badge-group">
               <span class="bus-id-badge">\${bus.bus_number}</span>
+              \${starBtnHtml}
               <span class="bus-reg-label">\${bus.registration}</span>
             </div>
             <span class="status-badge \${badgeClass}">\${badgeText}</span>
@@ -2155,7 +2191,31 @@ export function renderMobileHtml(): string {
       });
     }
 
-    // Open Stop Modal
+    // Toggle Favorite Bus
+    window.toggleFavoriteBus = (busId) => {
+      const idx = appState.favoriteBusIds.indexOf(busId);
+      if (idx >= 0) {
+        appState.favoriteBusIds.splice(idx, 1);
+      } else {
+        appState.favoriteBusIds.push(busId);
+      }
+      try {
+        localStorage.setItem('vjit_favorite_buses', JSON.stringify(appState.favoriteBusIds));
+      } catch (_) {}
+      renderBusesList();
+    };
+
+    // Close Stop Modal & Clean Up Geofence
+    window.closeStopModal = () => {
+      const modal = document.getElementById('stop-details-modal');
+      if (modal) modal.classList.remove('open');
+      if (appState.activeStopGeofence && appState.mapInstance) {
+        appState.mapInstance.removeLayer(appState.activeStopGeofence);
+        appState.activeStopGeofence = null;
+      }
+    };
+
+    // Open Stop Modal & Render 100m Geofence on Map
     window.openStopModal = (stop, corridorName, seq) => {
       document.getElementById('modal-stop-sequence').textContent = 'Stop #' + seq;
       document.getElementById('modal-stop-name').textContent = stop.name;
@@ -2163,6 +2223,29 @@ export function renderMobileHtml(): string {
       document.getElementById('modal-stop-morning-time').textContent = stop.scheduled_time;
       document.getElementById('modal-stop-evening-time').textContent = '04:45 PM';
       document.getElementById('modal-stop-live-status').textContent = 'Scheduled';
+
+      // Visual Geofence 100m Circle on Leaflet Map
+      if (appState.activeStopGeofence && appState.mapInstance) {
+        appState.mapInstance.removeLayer(appState.activeStopGeofence);
+        appState.activeStopGeofence = null;
+      }
+
+      if (appState.mapInstance && typeof stop.latitude === 'number' && typeof stop.longitude === 'number') {
+        const isDarkNow = (document.documentElement.getAttribute('data-theme') || appState.resolvedTheme) === 'dark';
+        appState.activeStopGeofence = L.circle([stop.latitude, stop.longitude], {
+          radius: 100, // 100-meter arrival geofence per Spec 10 & Part I.5
+          color: isDarkNow ? '#38BDF8' : '#16A34A',
+          fillColor: isDarkNow ? '#0284C7' : '#22C55E',
+          fillOpacity: 0.25,
+          weight: 2,
+          dashArray: '4, 4'
+        }).addTo(appState.mapInstance);
+
+        appState.activeStopGeofence.bindPopup('<strong>Stop #' + seq + ' Arrival Geofence (100m)</strong><br>' + stop.name);
+        appState.mapInstance.setView([stop.latitude, stop.longitude], 15, { animate: true });
+        appState.userInteractedWithMap = true;
+      }
+
       document.getElementById('stop-details-modal').classList.add('open');
     };
 

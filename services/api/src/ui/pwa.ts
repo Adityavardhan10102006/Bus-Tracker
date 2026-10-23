@@ -80,8 +80,13 @@ self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
 
   // SECURITY & HONESTY RULE:
-  // Never intercept or cache sensitive/dynamic API endpoints or mutation operations
-  if (event.request.method !== 'GET' || url.pathname.startsWith('/api/')) {
+  // Never intercept or cache sensitive/dynamic API endpoints, admin console, or mutation operations
+  if (
+    event.request.method !== 'GET' ||
+    url.pathname.startsWith('/api/') ||
+    url.pathname.startsWith('/admin') ||
+    url.pathname.startsWith('/console')
+  ) {
     return;
   }
 

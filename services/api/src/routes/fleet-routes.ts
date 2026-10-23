@@ -493,6 +493,44 @@ export async function handleFleetApiRoutes(
     return true;
   }
 
+  // PATCH/POST /api/v1/devices/:id/status: Update device provisioning/revocation status
+  if ((method === 'PATCH' || method === 'POST') && pathname.includes('/api/v1/devices/') && pathname.endsWith('/status')) {
+    const parts = pathname.split('/');
+    const deviceId = parts[4] ?? '';
+    const user = fleetDataStore.getCurrentUser();
+
+    // Security Check: Rule E.6 - Technicians and read-only roles cannot change device lifecycle status
+    if (user.role !== 'COR' && user.role !== 'SAD') {
+      sendErrorResponse(
+        res,
+        403,
+        'FORBIDDEN',
+        'Role Unauthorized: Only Transport Coordinators (COR) and Super Admins (SAD) can change device lifecycle status.',
+        requestId,
+      );
+      return true;
+    }
+
+    try {
+      const body = await parseJsonBody<{ status: 'ACTIVE' | 'PROVISIONED' | 'REVOKED' }>(req);
+      if (!body.status || !['ACTIVE', 'PROVISIONED', 'REVOKED'].includes(body.status)) {
+        sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'status must be ACTIVE, PROVISIONED, or REVOKED.', requestId);
+        return true;
+      }
+      const result = fleetDataStore.updateDeviceStatus(deviceId, body.status, user.email);
+      if (!result.success) {
+        sendErrorResponse(res, 404, 'NOT_FOUND', result.error ?? 'Device not found.', requestId);
+        return true;
+      }
+      logger.info('Device status updated', { deviceId, status: body.status, updatedBy: user.email });
+      sendJsonResponse(res, 200, { success: true, device: result.device, request_id: requestId }, requestId);
+      return true;
+    } catch (e) {
+      sendErrorResponse(res, 400, 'BAD_REQUEST', (e as Error).message, requestId);
+      return true;
+    }
+  }
+
   // 5. Service Alerts
   if (method === 'GET' && pathname === '/api/v1/alerts') {
     const alerts = fleetDataStore.getAlerts();
