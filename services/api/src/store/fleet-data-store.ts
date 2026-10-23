@@ -1990,6 +1990,82 @@ export class FleetDataStore
     return log;
   }
 
+  createBackup(): { success: boolean; backupPath?: string; error?: string } {
+    try {
+      this.savePersistedStore();
+      const dir = path.dirname(this.persistencePath);
+      const backupDir = path.join(dir, 'backups');
+      if (!fs.existsSync(backupDir)) {
+        fs.mkdirSync(backupDir, { recursive: true });
+      }
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+      const backupPath = path.join(backupDir, `fleet-backup-${timestamp}.json`);
+      fs.copyFileSync(this.persistencePath, backupPath);
+      this.recordAuditLog(
+        this.currentUser.email,
+        this.currentUser.role,
+        'DATABASE_BACKUP',
+        'SYSTEM',
+        'STORE_BACKUP',
+        `Generated operational store backup snapshot: ${path.basename(backupPath)}`,
+      );
+      return { success: true, backupPath };
+    } catch (e) {
+      return { success: false, error: (e as Error).message };
+    }
+  }
+
+  getDiagnostics(): Record<string, unknown> {
+    const fileExists = fs.existsSync(this.persistencePath);
+    let fileSize = 0;
+    if (fileExists) {
+      try {
+        fileSize = fs.statSync(this.persistencePath).size;
+      } catch (_) {}
+    }
+
+    const liveBuses = this.getSnapshots().filter(b => b.state === 'LIVE_HW' || b.state === 'LIVE_PHONE');
+    const staleBuses = this.getSnapshots().filter(b => b.state === 'STALE');
+
+    return {
+      status: 'HEALTHY',
+      service: 'vjit-bus-tracker',
+      environment: process.env.NODE_ENV || 'development',
+      serverTimeUtc: new Date().toISOString(),
+      uptimeSeconds: Math.floor(process.uptime()),
+      persistence: {
+        engine: 'FILE_SYSTEM_TRANSACTIONAL_JSON',
+        path: this.persistencePath,
+        exists: fileExists,
+        sizeBytes: fileSize,
+        durabilityGuarantee: 'Survives server restart and crash recovery; PostgreSQL PostGIS migration pending Phase P7 approval',
+      },
+      fleet: {
+        totalBuses: this.buses.length,
+        activeBuses: this.buses.filter(b => b.status === 'ACTIVE').length,
+        maintenanceBuses: this.buses.filter(b => b.status === 'MAINTENANCE').length,
+        retiredBuses: this.buses.filter(b => b.status === 'RETIRED').length,
+        liveTrackingCount: liveBuses.length,
+        staleSignalsCount: staleBuses.length,
+      },
+      routes: {
+        totalRoutes: this.routes.length,
+        totalStops: this.routes.reduce((acc, r) => acc + (r.stops?.length ?? 0), 0),
+      },
+      devices: {
+        totalDevices: this.devices.length,
+        activeDevices: this.devices.filter(d => d.status === 'ACTIVE').length,
+        provisionedDevices: this.devices.filter(d => d.status === 'PROVISIONED').length,
+        revokedDevices: this.devices.filter(d => d.status === 'REVOKED').length,
+        activeLinks: this.links.filter(l => !l.valid_to).length,
+      },
+      security: {
+        authMechanisms: ['BEARER_TOKEN_HMAC_SHA256', 'CRYPTOGRAPHIC_ROTATING_PASS'],
+        mfaEnforcedRoles: ['COR', 'TEC', 'SAD', 'MGT', 'SEC'],
+      },
+    };
+  }
+
   private savePersistedStore(): void {
     try {
       const dir = path.dirname(this.persistencePath);

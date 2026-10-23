@@ -194,7 +194,9 @@ export function createApiServer(
         (pathname === '/api/v1/attendance' || pathname === '/api/v1/attendance/manual-checkin') ||
         pathname.startsWith('/api/v1/maintenance') ||
         pathname.startsWith('/api/v1/settings') ||
-        pathname.startsWith('/api/v1/audit-logs')
+        pathname.startsWith('/api/v1/audit-logs') ||
+        pathname.startsWith('/api/v1/diagnostics') ||
+        pathname.startsWith('/api/v1/admin')
       ) {
         return handleFleetApiRoutes(req, res, url, requestId)
           .then(handled => {

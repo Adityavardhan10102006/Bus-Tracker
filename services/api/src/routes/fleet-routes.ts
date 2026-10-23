@@ -314,6 +314,11 @@ export async function handleFleetApiRoutes(
 
   // POST /api/v1/routes/:id/stops: Add stop
   if (method === 'POST' && pathname.includes('/api/v1/routes/') && pathname.endsWith('/stops')) {
+    const user = fleetDataStore.getCurrentUser();
+    if (user.role !== 'COR' && user.role !== 'SAD') {
+      sendErrorResponse(res, 403, 'FORBIDDEN', 'Role Unauthorized: Only Coordinators and Super Admins can add route stops.', requestId);
+      return true;
+    }
     const parts = pathname.split('/');
     const routeId = parts[4] ?? '';
     try {
@@ -338,6 +343,11 @@ export async function handleFleetApiRoutes(
 
   // DELETE /api/v1/routes/:id/stops/:stopId
   if (method === 'DELETE' && pathname.includes('/api/v1/routes/') && pathname.includes('/stops/')) {
+    const user = fleetDataStore.getCurrentUser();
+    if (user.role !== 'COR' && user.role !== 'SAD') {
+      sendErrorResponse(res, 403, 'FORBIDDEN', 'Role Unauthorized: Only Coordinators and Super Admins can remove route stops.', requestId);
+      return true;
+    }
     const parts = pathname.split('/');
     const routeId = parts[4] ?? '';
     const stopId = parts[6] ?? '';
@@ -360,6 +370,11 @@ export async function handleFleetApiRoutes(
 
   // POST /api/v1/buses: Create bus
   if (method === 'POST' && pathname === '/api/v1/buses') {
+    const user = fleetDataStore.getCurrentUser();
+    if (user.role !== 'COR' && user.role !== 'SAD') {
+      sendErrorResponse(res, 403, 'FORBIDDEN', 'Role Unauthorized: Only Coordinators and Super Admins can register buses.', requestId);
+      return true;
+    }
     try {
       const body = await parseJsonBody<{
         bus_number: string;
@@ -389,6 +404,11 @@ export async function handleFleetApiRoutes(
 
   // PUT /api/v1/buses/:id: Update bus
   if ((method === 'PUT' || method === 'PATCH') && pathname.startsWith('/api/v1/buses/')) {
+    const user = fleetDataStore.getCurrentUser();
+    if (user.role !== 'COR' && user.role !== 'SAD') {
+      sendErrorResponse(res, 403, 'FORBIDDEN', 'Role Unauthorized: Only Coordinators and Super Admins can update buses.', requestId);
+      return true;
+    }
     const busId = pathname.replace('/api/v1/buses/', '');
     try {
       const body = await parseJsonBody<Record<string, unknown>>(req);
@@ -408,6 +428,11 @@ export async function handleFleetApiRoutes(
 
   // DELETE /api/v1/buses/:id: Deactivate bus
   if (method === 'DELETE' && pathname.startsWith('/api/v1/buses/')) {
+    const user = fleetDataStore.getCurrentUser();
+    if (user.role !== 'COR' && user.role !== 'SAD') {
+      sendErrorResponse(res, 403, 'FORBIDDEN', 'Role Unauthorized: Only Coordinators and Super Admins can deactivate buses.', requestId);
+      return true;
+    }
     const busId = pathname.replace('/api/v1/buses/', '');
     const deactivated = fleetDataStore.deactivateBus(busId);
     if (!deactivated) {
@@ -433,13 +458,13 @@ export async function handleFleetApiRoutes(
     const deviceId = parts[4] ?? '';
     const user = fleetDataStore.getCurrentUser();
 
-    // Security Check: Rule E.6 - Technicians cannot link devices!
-    if (user.role === 'TEC') {
+    // Security Check: Rule E.6 - Only Coordinators and Super Admins can link devices!
+    if (user.role !== 'COR' && user.role !== 'SAD') {
       sendErrorResponse(
         res,
         403,
         'FORBIDDEN',
-        'Role Unauthorized: Fleet Technicians are restricted from associating devices to buses (Rule E.6: Coordinator or Super Admin only).',
+        'Role Unauthorized: Only Transport Coordinators (COR) and Super Admins (SAD) can associate devices to buses (Rule E.6).',
         requestId,
       );
       return true;
@@ -471,13 +496,13 @@ export async function handleFleetApiRoutes(
     const deviceId = parts[4] ?? '';
     const user = fleetDataStore.getCurrentUser();
 
-    // Security Check: Rule E.6 - Technicians cannot modify device links!
-    if (user.role === 'TEC' || user.role === 'MGT' || user.role === 'SEC') {
+    // Security Check: Rule E.6 - Only Coordinators and Super Admins can modify device links!
+    if (user.role !== 'COR' && user.role !== 'SAD') {
       sendErrorResponse(
         res,
         403,
         'FORBIDDEN',
-        'Role Unauthorized: Fleet Technicians and read-only roles cannot modify device associations (Rule E.6: Coordinator or Super Admin only).',
+        'Role Unauthorized: Only Transport Coordinators (COR) and Super Admins (SAD) can modify device associations (Rule E.6).',
         requestId,
       );
       return true;
@@ -540,6 +565,11 @@ export async function handleFleetApiRoutes(
 
   // POST /api/v1/alerts: Create alert
   if (method === 'POST' && pathname === '/api/v1/alerts') {
+    const user = fleetDataStore.getCurrentUser();
+    if (user.role !== 'COR' && user.role !== 'SAD') {
+      sendErrorResponse(res, 403, 'FORBIDDEN', 'Role Unauthorized: Only Coordinators and Super Admins can publish service alerts.', requestId);
+      return true;
+    }
     try {
       const body = await parseJsonBody<{
         title: string;
@@ -621,6 +651,11 @@ export async function handleFleetApiRoutes(
 
   // 8. Attendance & Boarding Logs (Spec 18 & ADM-08)
   if (method === 'GET' && pathname === '/api/v1/attendance') {
+    const user = fleetDataStore.getCurrentUser();
+    if (!['COR', 'SAD', 'MGT', 'SEC', 'FAC'].includes(user.role)) {
+      sendErrorResponse(res, 403, 'FORBIDDEN', 'Access to attendance logs is restricted to authorized staff.', requestId);
+      return true;
+    }
     const tripType = url.searchParams.get('trip_type') ?? undefined;
     const status = url.searchParams.get('status') ?? undefined;
     const search = url.searchParams.get('q') ?? undefined;
@@ -658,6 +693,11 @@ export async function handleFleetApiRoutes(
 
   // 9. Maintenance & Repair Ticket Board (Spec 16.4, 16.5 & ADM-05)
   if (method === 'GET' && pathname === '/api/v1/maintenance/tickets') {
+    const user = fleetDataStore.getCurrentUser();
+    if (!['COR', 'TEC', 'SAD', 'MGT'].includes(user.role)) {
+      sendErrorResponse(res, 403, 'FORBIDDEN', 'Access to maintenance tickets is restricted to fleet operations staff.', requestId);
+      return true;
+    }
     const entityType = url.searchParams.get('entity_type') ?? undefined;
     const status = url.searchParams.get('status') ?? undefined;
     const tickets = fleetDataStore.getMaintenanceTickets({ entityType, status });
@@ -702,6 +742,10 @@ export async function handleFleetApiRoutes(
     const parts = pathname.split('/');
     const ticketId = parts[5] ?? '';
     const user = fleetDataStore.getCurrentUser();
+    if (!['COR', 'TEC', 'SAD'].includes(user.role)) {
+      sendErrorResponse(res, 403, 'FORBIDDEN', 'Insufficient permissions to resolve maintenance tickets.', requestId);
+      return true;
+    }
     try {
       const body = await parseJsonBody<{ resolution_note: string }>(req);
       if (!body.resolution_note) {
@@ -767,8 +811,42 @@ export async function handleFleetApiRoutes(
 
   // 11. Immutable Audit Trail (Spec Section 31 & ADM-14)
   if (method === 'GET' && pathname === '/api/v1/audit-logs') {
+    const user = fleetDataStore.getCurrentUser();
+    if (!['COR', 'SAD', 'MGT', 'SEC'].includes(user.role)) {
+      sendErrorResponse(res, 403, 'FORBIDDEN', 'Audit logs are restricted to authorized audit and operations staff.', requestId);
+      return true;
+    }
     const logs = fleetDataStore.getAuditLogs();
     sendJsonResponse(res, 200, { logs, total: logs.length, request_id: requestId }, requestId);
+    return true;
+  }
+
+  // 12. Operational Diagnostics & Freshness (Spec Section 31.4 & ADM-15)
+  if (method === 'GET' && pathname === '/api/v1/diagnostics') {
+    const user = fleetDataStore.getCurrentUser();
+    if (!['COR', 'TEC', 'SAD', 'MGT', 'SEC'].includes(user.role)) {
+      sendErrorResponse(res, 403, 'FORBIDDEN', 'Operational diagnostics are restricted to transport staff.', requestId);
+      return true;
+    }
+    const diagnostics = fleetDataStore.getDiagnostics();
+    sendJsonResponse(res, 200, { success: true, diagnostics, request_id: requestId }, requestId);
+    return true;
+  }
+
+  // 13. System Store Backup Snapshot (Spec Section 31.6 & Task P0-T14)
+  if (method === 'POST' && pathname === '/api/v1/admin/backup') {
+    const user = fleetDataStore.getCurrentUser();
+    if (user.role !== 'SAD') {
+      sendErrorResponse(res, 403, 'FORBIDDEN', 'Role Unauthorized: Only Super Administrators (SAD) can trigger store backup snapshots.', requestId);
+      return true;
+    }
+    const backupResult = fleetDataStore.createBackup();
+    if (!backupResult.success) {
+      sendErrorResponse(res, 500, 'BACKUP_FAILED', backupResult.error ?? 'Failed to create store backup snapshot.', requestId);
+      return true;
+    }
+    logger.info('System store backup snapshot created by Super Admin', { backupPath: backupResult.backupPath });
+    sendJsonResponse(res, 201, { success: true, backupPath: backupResult.backupPath, request_id: requestId }, requestId);
     return true;
   }
 
