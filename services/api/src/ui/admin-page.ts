@@ -12,6 +12,8 @@ export function renderAdminHtml(): string {
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
   <style>
     :root {
       --brand-navy: #103754;
@@ -36,6 +38,80 @@ export function renderAdminHtml(): string {
       --state-unavail-bg: #FEE2E2;
       --state-idle: #64748B;
       --state-idle-bg: #F1F5F9;
+    }
+
+    /* Route Studio & Mapping Styles */
+    .studio-container {
+      display: grid;
+      grid-template-columns: 1.15fr 1fr;
+      gap: 16px;
+    }
+    @media (max-width: 900px) {
+      .studio-container {
+        grid-template-columns: 1fr;
+      }
+    }
+    .studio-map-pane {
+      position: relative;
+      height: 480px;
+      border-radius: 10px;
+      overflow: hidden;
+      border: 1px solid var(--border-strong);
+      background: #E2E8F0;
+    }
+    #admin-route-map {
+      width: 100%;
+      height: 100%;
+      z-index: 1;
+    }
+    .studio-stop-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 10px;
+      border-bottom: 1px solid var(--border-subtle);
+      font-size: 12px;
+      background: white;
+      transition: background 0.15s;
+    }
+    .studio-stop-row:hover {
+      background: #F8FAFC;
+    }
+    .studio-stop-seq {
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      background: var(--brand-navy);
+      color: white;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      font-size: 10.5px;
+      flex-shrink: 0;
+    }
+    .studio-btn-icon {
+      background: white;
+      border: 1px solid var(--border-subtle);
+      border-radius: 4px;
+      width: 24px;
+      height: 24px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      font-size: 11px;
+      color: var(--text-secondary);
+      transition: all 0.15s;
+    }
+    .studio-btn-icon:hover:not(:disabled) {
+      background: var(--brand-navy-light);
+      color: var(--brand-navy);
+      border-color: var(--brand-navy);
+    }
+    .studio-btn-icon:disabled {
+      opacity: 0.35;
+      cursor: not-allowed;
     }
 
     * {
@@ -773,6 +849,7 @@ export function renderAdminHtml(): string {
                 <th>Route Name</th>
                 <th>Origin</th>
                 <th>Destination</th>
+                <th>Geometry &amp; Length</th>
                 <th>Active Buses</th>
                 <th>Stops Count</th>
                 <th>Actions</th>
@@ -1202,63 +1279,121 @@ export function renderAdminHtml(): string {
     </div>
   </div>
 
-  <!-- Modal: Manage Route Stops -->
+  <!-- Modal: Route Studio (Automatic Route Drawing, Stop Reordering & Interactive Leaflet Map) -->
   <div class="modal-overlay" id="modal-manage-stops">
-    <div class="admin-modal-card" style="max-width: 680px;">
-      <div class="modal-head">
-        <h3 id="manage-stops-route-title">Manage Route Stops</h3>
+    <div class="admin-modal-card" style="max-width: 1060px; width: 95vw;">
+      <div class="modal-head" style="display:flex; justify-content:space-between; align-items:center;">
+        <div>
+          <h3 id="manage-stops-route-title" style="display:flex; align-items:center; gap:8px;">
+            <span>Route Studio</span>
+            <span id="studio-unsaved-badge" style="display:none; font-size:11px; background:#FEF3C7; color:#92400E; padding:2px 8px; border-radius:4px; font-weight:700;">⚠️ Unsaved Changes</span>
+          </h3>
+          <p id="manage-stops-route-subtitle" style="font-size:12.5px; color:var(--text-secondary); margin-top:2px;"></p>
+        </div>
         <button class="modal-close-x" onclick="closeModal('modal-manage-stops')">&times;</button>
       </div>
-      <div class="modal-body" style="max-height: 70vh; overflow-y: auto;">
-        <div style="font-size:13px; color:var(--text-secondary); margin-bottom:12px;" id="manage-stops-route-subtitle"></div>
-        
-        <table class="data-table" style="margin-bottom: 20px;">
-          <thead>
-            <tr>
-              <th>#</th>
-              <th>Stop Name</th>
-              <th>Scheduled Time</th>
-              <th>Coordinates</th>
-              <th>Action</th>
-            </tr>
-          </thead>
-          <tbody id="manage-stops-table-body">
-          </tbody>
-        </table>
 
-        <!-- Add Stop Inline Form -->
-        <div style="background:var(--canvas-light); border:1px solid var(--border-subtle); border-radius:8px; padding:16px;">
-          <h4 style="font-size:13.5px; font-weight:700; color:var(--brand-navy); margin-bottom:10px;">Add New Stop to Route</h4>
-          <form id="form-add-stop">
-            <input type="hidden" id="add-stop-route-id" name="route_id">
-            <div class="form-grid-2">
-              <div class="form-group">
-                <label>Stop Name</label>
-                <input type="text" class="form-control" name="name" required placeholder="e.g. Langar Houz X Road">
+      <div class="modal-body" style="max-height: 75vh; overflow-y: auto; padding: 18px 20px;">
+        <!-- Validation Error Alert Banner -->
+        <div id="studio-error-banner" style="display:none; background:#FEE2E2; border:1px solid #FCA5A5; color:#B91C1C; padding:10px 14px; border-radius:8px; font-size:12px; margin-bottom:14px; font-weight:500;"></div>
+
+        <!-- Studio Grid Layout -->
+        <div class="studio-container">
+          <!-- Left Column: Stop Sequence & Form -->
+          <div style="display:flex; flex-direction:column; gap:14px;">
+            <!-- Metrics & Source Info Bar -->
+            <div style="background:var(--canvas-light); border:1px solid var(--border-subtle); border-radius:8px; padding:10px 14px; display:flex; justify-content:space-between; align-items:center; font-size:12px;">
+              <div>
+                <span style="color:var(--text-muted); font-weight:600;">Geometry:</span>
+                <span id="studio-geom-badge" style="margin-left:4px; font-weight:700; padding:2px 6px; border-radius:4px;">OSRM Road</span>
               </div>
-              <div class="form-group">
-                <label>Scheduled Pickup Time</label>
-                <input type="text" class="form-control" name="scheduled_time" required placeholder="08:15 AM">
+              <div>
+                <span style="color:var(--text-muted); font-weight:600;">Length:</span>
+                <strong id="studio-distance-val" style="margin-left:4px; color:var(--brand-navy);">14.2 km</strong>
               </div>
-            </div>
-            <div class="form-grid-2">
-              <div class="form-group">
-                <label>Latitude</label>
-                <input type="number" step="0.0001" class="form-control" name="latitude" required value="17.3820">
-              </div>
-              <div class="form-group">
-                <label>Longitude</label>
-                <input type="number" step="0.0001" class="form-control" name="longitude" required value="78.4090">
+              <div>
+                <span style="color:var(--text-muted); font-weight:600;">Stops:</span>
+                <strong id="studio-stops-count-val" style="margin-left:4px; color:var(--brand-navy);">5</strong>
               </div>
             </div>
-            <div style="display:flex; justify-content:flex-end;">
-              <button type="submit" class="btn-primary" style="font-size:12.5px; padding:6px 14px;">+ Add Stop</button>
+
+            <!-- Ordered Stops Sequence Table -->
+            <div style="border:1px solid var(--border-subtle); border-radius:8px; overflow:hidden;">
+              <div style="background:var(--brand-navy); color:white; padding:8px 12px; font-size:12px; font-weight:700; display:flex; justify-content:space-between; align-items:center;">
+                <span>Stop Progression &amp; Ordering</span>
+                <span style="font-size:10.5px; opacity:0.85;">Use ▲/▼ to re-order sequence</span>
+              </div>
+              <div id="studio-stops-list" style="max-height: 220px; overflow-y: auto;">
+                <!-- Dynamically generated stop sequence rows -->
+              </div>
             </div>
-          </form>
+
+            <!-- Add New Stop Inline Form -->
+            <div id="studio-add-stop-panel" style="background:var(--canvas-light); border:1px solid var(--border-subtle); border-radius:8px; padding:14px;">
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                <h4 style="font-size:13px; font-weight:700; color:var(--brand-navy);">Add Stop to Sequence</h4>
+                <button type="button" id="btn-toggle-pick-mode" class="btn-secondary" style="font-size:11px; padding:3px 8px; display:flex; align-items:center; gap:4px; cursor:pointer;">
+                  <span>📍</span> <span id="lbl-pick-mode">Pick on Map</span>
+                </button>
+              </div>
+              <form id="form-add-stop">
+                <input type="hidden" id="add-stop-route-id" name="route_id">
+                <div class="form-grid-2">
+                  <div class="form-group" style="margin-bottom:8px;">
+                    <label style="font-size:11px;">Stop Name</label>
+                    <input type="text" class="form-control" id="studio-new-stop-name" name="name" required placeholder="e.g. Pillar 143 Attapur" style="padding:5px 8px; font-size:12px;">
+                  </div>
+                  <div class="form-group" style="margin-bottom:8px;">
+                    <label style="font-size:11px;">Scheduled Pickup Time</label>
+                    <input type="text" class="form-control" id="studio-new-stop-time" name="scheduled_time" required placeholder="08:15 AM" style="padding:5px 8px; font-size:12px;">
+                  </div>
+                </div>
+                <div class="form-grid-2">
+                  <div class="form-group" style="margin-bottom:10px;">
+                    <label style="font-size:11px;">Latitude (8° to 37° N)</label>
+                    <input type="number" step="0.0001" class="form-control" id="studio-new-stop-lat" name="latitude" required value="17.3750" style="padding:5px 8px; font-size:12px;">
+                  </div>
+                  <div class="form-group" style="margin-bottom:10px;">
+                    <label style="font-size:11px;">Longitude (68° to 97° E)</label>
+                    <input type="number" step="0.0001" class="form-control" id="studio-new-stop-lng" name="longitude" required value="78.4320" style="padding:5px 8px; font-size:12px;">
+                  </div>
+                </div>
+                <div style="display:flex; justify-content:flex-end;">
+                  <button type="submit" class="btn-primary" style="font-size:12px; padding:6px 14px;">+ Insert Stop</button>
+                </div>
+              </form>
+            </div>
+          </div>
+
+          <!-- Right Column: Interactive Map Preview Pane -->
+          <div class="studio-map-pane">
+            <div id="studio-tiles-warning" style="display:none; position:absolute; top:8px; left:8px; right:8px; background:rgba(217,119,6,0.92); color:white; padding:6px 10px; border-radius:6px; font-size:11px; z-index:25; backdrop-filter:blur(4px);">
+              ⚠️ Tile loading slow or unavailable. Geometric route path remains active.
+            </div>
+            <div id="admin-route-map"></div>
+            <div style="position:absolute; bottom:10px; left:10px; z-index:10; background:rgba(255,255,255,0.92); backdrop-filter:blur(4px); padding:4px 8px; border-radius:6px; font-size:10px; border:1px solid var(--border-strong); display:flex; gap:10px; align-items:center;">
+              <span style="display:flex; align-items:center; gap:4px;"><span style="display:inline-block; width:12px; height:3px; background:#103754;"></span> Road Route</span>
+              <span style="display:flex; align-items:center; gap:4px;"><span style="display:inline-block; width:12px; height:3px; background:#D97706; border-top:1px dashed #D97706;"></span> Straight Fallback</span>
+            </div>
+            <div style="position:absolute; top:10px; right:10px; z-index:10; display:flex; flex-direction:column; gap:6px;">
+              <button type="button" class="studio-btn-icon" id="btn-studio-fit-bounds" title="Fit Route Bounds" style="background:white; width:30px; height:30px; font-size:14px; box-shadow:0 2px 5px rgba(0,0,0,0.15);">&#x26F6;</button>
+            </div>
+          </div>
         </div>
       </div>
-      <div class="modal-foot">
-        <button type="button" class="btn-secondary" onclick="closeModal('modal-manage-stops')">Done</button>
+
+      <div class="modal-foot" style="display:flex; justify-content:space-between; align-items:center; padding:12px 20px;">
+        <div style="display:flex; gap:8px;">
+          <button type="button" id="btn-studio-recalculate" class="btn-secondary" style="font-size:12.5px; padding:8px 14px; font-weight:600; display:flex; align-items:center; gap:6px; cursor:pointer;">
+            <span>⚡</span> <span>Recalculate Road Geometry (OSRM)</span>
+          </button>
+        </div>
+        <div style="display:flex; gap:10px;">
+          <button type="button" class="btn-secondary" onclick="closeModal('modal-manage-stops')">Cancel</button>
+          <button type="button" id="btn-studio-save" class="btn-primary" style="font-size:12.5px; padding:8px 18px; font-weight:700; cursor:pointer;">
+            💾 Save Route Changes
+          </button>
+        </div>
       </div>
     </div>
   </div>
@@ -1484,6 +1619,21 @@ export function renderAdminHtml(): string {
       maintFilter: { entityType: '', status: '', search: '' }
     };
 
+    // Route Studio Working State Machine
+    let adminRouteStudio = {
+      route: null,
+      stops: [],
+      polyline: [],
+      geometrySource: 'SAVED_GEOMETRY',
+      distanceMeters: null,
+      hasUnsavedChanges: false,
+      mapInstance: null,
+      polylineLayer: null,
+      stopMarkers: [],
+      pickCoordinatesMode: false,
+      pickMarker: null
+    };
+
     function showFeedback(msg, isError = false) {
       const banner = document.getElementById('feedback-alert');
       banner.textContent = msg;
@@ -1496,6 +1646,12 @@ export function renderAdminHtml(): string {
       document.getElementById(id).classList.add('open');
     }
     function closeModal(id) {
+      if (id === 'modal-manage-stops' && adminRouteStudio.hasUnsavedChanges) {
+        if (!confirm('You have unsaved route changes in Route Studio. Are you sure you want to discard your edits?')) {
+          return;
+        }
+        adminRouteStudio.hasUnsavedChanges = false;
+      }
       document.getElementById(id).classList.remove('open');
     }
 
@@ -1676,21 +1832,29 @@ export function renderAdminHtml(): string {
       }
 
       if (filtered.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center; color:var(--text-muted); padding:24px;">No route corridors match the search query.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="8" style="text-align:center; color:var(--text-muted); padding:24px;">No route corridors match the search query.</td></tr>';
         return;
       }
 
       filtered.forEach(r => {
+        const geomBadge = r.geometry_source === 'ROUTING_PROVIDER'
+          ? '<span style="font-size:11px; font-weight:700; color:#065F46; background:#ECFDF5; padding:2px 6px; border-radius:4px;">⚡ Road</span>'
+          : (r.geometry_source === 'SAVED_GEOMETRY'
+            ? '<span style="font-size:11px; font-weight:700; color:#1E40AF; background:#EFF6FF; padding:2px 6px; border-radius:4px;">💾 Saved</span>'
+            : '<span style="font-size:11px; font-weight:700; color:#92400E; background:#FFFBEB; padding:2px 6px; border-radius:4px;">⚠️ Direct</span>');
+        const distLabel = r.distance_meters ? (r.distance_meters / 1000).toFixed(1) + ' km' : '&mdash;';
+
         const row = document.createElement('tr');
         row.innerHTML = \`
           <td><span style="font-weight:700; background:var(--brand-navy-light); color:var(--brand-navy); padding:2px 8px; border-radius:4px;">\${r.code}</span></td>
           <td><strong>\${r.name}</strong></td>
           <td>\${r.origin}</td>
           <td>\${r.destination}</td>
+          <td>\${geomBadge} <span style="font-size:11px; color:var(--text-secondary); margin-left:4px;">\${distLabel}</span></td>
           <td>\${r.active_buses}</td>
-          <td>\${r.stops.length} stops</td>
+          <td>\${r.stops ? r.stops.length : 0} stops</td>
           <td>
-            <button class="btn-table-action" style="margin-right:6px;" onclick="openManageStopsModal('\${r.id}')">\${canWrite ? 'Manage Stops' : 'View Stops'}</button>
+            <button class="btn-table-action" style="margin-right:6px;" onclick="openManageStopsModal('\${r.id}')">\${canWrite ? 'Route Studio &amp; Stops' : 'View Stops &amp; Map'}</button>
             \${canWrite ? \`<button class="btn-table-action btn-table-danger" onclick="deleteRoute('\${r.id}')">Delete</button>\` : ''}
           </td>
         \`;
@@ -1819,56 +1983,259 @@ export function renderAdminHtml(): string {
       }
     };
 
+    // Route Studio Implementation
+    function updateStudioMetrics() {
+      const stops = adminRouteStudio.stops || [];
+      const countEl = document.getElementById('studio-stops-count-val');
+      const distEl = document.getElementById('studio-distance-val');
+      const badgeEl = document.getElementById('studio-geom-badge');
+      const unsavedBadge = document.getElementById('studio-unsaved-badge');
+
+      if (countEl) countEl.textContent = stops.length;
+      if (distEl) {
+        distEl.textContent = adminRouteStudio.distanceMeters
+          ? (adminRouteStudio.distanceMeters / 1000).toFixed(1) + ' km'
+          : (stops.length >= 2 ? 'Estimated' : '0 km');
+      }
+      if (badgeEl) {
+        if (adminRouteStudio.geometrySource === 'ROUTING_PROVIDER') {
+          badgeEl.textContent = '⚡ Road-Following (OSRM)';
+          badgeEl.style.background = '#ECFDF5';
+          badgeEl.style.color = '#065F46';
+        } else if (adminRouteStudio.geometrySource === 'SAVED_GEOMETRY') {
+          badgeEl.textContent = '💾 Verified Saved';
+          badgeEl.style.background = '#EFF6FF';
+          badgeEl.style.color = '#1E40AF';
+        } else {
+          badgeEl.textContent = '⚠️ Straight-Line Fallback';
+          badgeEl.style.background = '#FFFBEB';
+          badgeEl.style.color = '#92400E';
+        }
+      }
+      if (unsavedBadge) {
+        unsavedBadge.style.display = adminRouteStudio.hasUnsavedChanges ? 'inline-block' : 'none';
+      }
+    }
+
+    function renderStudioStopsList() {
+      const container = document.getElementById('studio-stops-list');
+      if (!container) return;
+      container.innerHTML = '';
+
+      const canWrite = adminState.currentRole === 'COR' || adminState.currentRole === 'SAD';
+      const addPanel = document.getElementById('studio-add-stop-panel');
+      if (addPanel) addPanel.style.display = canWrite ? 'block' : 'none';
+
+      const saveBtn = document.getElementById('btn-studio-save');
+      if (saveBtn) saveBtn.style.display = canWrite ? 'inline-flex' : 'none';
+
+      const recalcBtn = document.getElementById('btn-studio-recalculate');
+      if (recalcBtn) recalcBtn.style.display = canWrite ? 'inline-flex' : 'none';
+
+      const stops = adminRouteStudio.stops;
+      if (!stops || stops.length === 0) {
+        container.innerHTML = '<div style="padding:16px; text-align:center; color:var(--text-muted); font-size:12px;">No stops defined yet. Use the form below or pick coordinates on the map.</div>';
+        return;
+      }
+
+      stops.forEach((s, idx) => {
+        const isFirst = idx === 0;
+        const isLast = idx === stops.length - 1;
+
+        const row = document.createElement('div');
+        row.className = 'studio-stop-row';
+        row.innerHTML = \`
+          <div style="display:flex; align-items:center; gap:8px;">
+            <div class="studio-stop-seq" style="background:\${isLast ? 'var(--brand-red)' : 'var(--brand-navy)'};">\${idx + 1}</div>
+            <div>
+              <div style="font-weight:700; color:var(--brand-navy);">\${s.name} \${isLast ? '★' : ''}</div>
+              <div style="font-size:11px; color:var(--text-secondary); margin-top:1px;">
+                <span>Time: <strong>\${s.scheduled_time || 'N/A'}</strong></span> • 
+                <code>\${s.latitude.toFixed(4)}, \${s.longitude.toFixed(4)}</code>
+              </div>
+            </div>
+          </div>
+          <div style="display:flex; align-items:center; gap:4px;">
+            \${canWrite ? \`
+              <button type="button" class="studio-btn-icon" title="Move Up" \${isFirst ? 'disabled' : ''} onclick="moveStudioStop(\${idx}, -1)">▲</button>
+              <button type="button" class="studio-btn-icon" title="Move Down" \${isLast ? 'disabled' : ''} onclick="moveStudioStop(\${idx}, 1)">▼</button>
+              <button type="button" class="studio-btn-icon" title="Remove Stop" style="color:var(--brand-red);" onclick="removeStudioStop(\${idx})">🗑️</button>
+            \` : '&mdash;'}
+          </div>
+        \`;
+        container.appendChild(row);
+      });
+    }
+
+    window.moveStudioStop = (idx, delta) => {
+      const targetIdx = idx + delta;
+      if (targetIdx < 0 || targetIdx >= adminRouteStudio.stops.length) return;
+      const temp = adminRouteStudio.stops[idx];
+      adminRouteStudio.stops[idx] = adminRouteStudio.stops[targetIdx];
+      adminRouteStudio.stops[targetIdx] = temp;
+      adminRouteStudio.stops.forEach((s, i) => s.sequence = i + 1);
+      adminRouteStudio.hasUnsavedChanges = true;
+      adminRouteStudio.polyline = [];
+      adminRouteStudio.geometrySource = 'STRAIGHT_LINE_FALLBACK';
+      updateStudioMetrics();
+      renderStudioStopsList();
+      renderStudioMap();
+    };
+
+    window.removeStudioStop = (idx) => {
+      if (idx < 0 || idx >= adminRouteStudio.stops.length) return;
+      adminRouteStudio.stops.splice(idx, 1);
+      adminRouteStudio.stops.forEach((s, i) => s.sequence = i + 1);
+      adminRouteStudio.hasUnsavedChanges = true;
+      adminRouteStudio.polyline = [];
+      adminRouteStudio.geometrySource = 'STRAIGHT_LINE_FALLBACK';
+      updateStudioMetrics();
+      renderStudioStopsList();
+      renderStudioMap();
+    };
+
+    function renderStudioMap() {
+      const mapContainer = document.getElementById('admin-route-map');
+      if (!mapContainer || typeof L === 'undefined') return;
+
+      if (!adminRouteStudio.mapInstance) {
+        adminRouteStudio.mapInstance = L.map('admin-route-map', {
+          zoomControl: false,
+          attributionControl: false
+        }).setView([17.3616, 78.3245], 13);
+
+        const tileLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+          maxZoom: 18
+        }).addTo(adminRouteStudio.mapInstance);
+
+        tileLayer.on('tileerror', () => {
+          const w = document.getElementById('studio-tiles-warning');
+          if (w) w.style.display = 'block';
+        });
+        tileLayer.on('load', () => {
+          const w = document.getElementById('studio-tiles-warning');
+          if (w) w.style.display = 'none';
+        });
+
+        adminRouteStudio.mapInstance.on('click', (e) => {
+          if (!adminRouteStudio.pickCoordinatesMode) return;
+          const lat = parseFloat(e.latlng.lat.toFixed(4));
+          const lng = parseFloat(e.latlng.lng.toFixed(4));
+
+          const latInput = document.getElementById('studio-new-stop-lat');
+          const lngInput = document.getElementById('studio-new-stop-lng');
+          if (latInput) latInput.value = lat;
+          if (lngInput) lngInput.value = lng;
+
+          if (adminRouteStudio.pickMarker) {
+            adminRouteStudio.pickMarker.setLatLng([lat, lng]);
+          } else {
+            const pickIcon = L.divIcon({
+              className: 'custom-pick-marker',
+              html: '<div style="background:#2563EB; width:14px; height:14px; border-radius:50%; border:3px solid white; box-shadow:0 2px 6px rgba(0,0,0,0.4);"></div>',
+              iconSize: [14, 14],
+              iconAnchor: [7, 7]
+            });
+            adminRouteStudio.pickMarker = L.marker([lat, lng], { icon: pickIcon }).addTo(adminRouteStudio.mapInstance);
+          }
+
+          adminRouteStudio.pickCoordinatesMode = false;
+          mapContainer.style.cursor = '';
+          const pickLabel = document.getElementById('lbl-pick-mode');
+          if (pickLabel) pickLabel.textContent = 'Pick on Map';
+        });
+
+        const fitBtn = document.getElementById('btn-studio-fit-bounds');
+        if (fitBtn) {
+          fitBtn.onclick = () => {
+            if (adminRouteStudio.polylineLayer) {
+              adminRouteStudio.mapInstance.fitBounds(adminRouteStudio.polylineLayer.getBounds(), { padding: [30, 30] });
+            } else if (adminRouteStudio.stops.length > 0) {
+              const latLngs = adminRouteStudio.stops.map(s => [s.latitude, s.longitude]);
+              adminRouteStudio.mapInstance.fitBounds(latLngs, { padding: [30, 30] });
+            }
+          };
+        }
+      }
+
+      if (adminRouteStudio.polylineLayer) {
+        adminRouteStudio.mapInstance.removeLayer(adminRouteStudio.polylineLayer);
+        adminRouteStudio.polylineLayer = null;
+      }
+      adminRouteStudio.stopMarkers.forEach(m => adminRouteStudio.mapInstance.removeLayer(m));
+      adminRouteStudio.stopMarkers = [];
+
+      const stops = adminRouteStudio.stops || [];
+      const hasRoadPoly = adminRouteStudio.polyline && adminRouteStudio.polyline.length >= 2;
+      const polyCoords = hasRoadPoly ? adminRouteStudio.polyline : stops.map(s => [s.latitude, s.longitude]);
+      const isFallback = !hasRoadPoly || adminRouteStudio.geometrySource === 'STRAIGHT_LINE_FALLBACK';
+
+      if (polyCoords.length >= 2) {
+        adminRouteStudio.polylineLayer = L.polyline(polyCoords, {
+          color: isFallback ? '#D97706' : '#103754',
+          weight: isFallback ? 3 : 5,
+          opacity: 0.85,
+          dashArray: isFallback ? '6, 6' : undefined
+        }).addTo(adminRouteStudio.mapInstance);
+
+        adminRouteStudio.mapInstance.fitBounds(adminRouteStudio.polylineLayer.getBounds(), { padding: [30, 30] });
+      } else if (stops.length === 1) {
+        adminRouteStudio.mapInstance.setView([stops[0].latitude, stops[0].longitude], 14);
+      } else {
+        adminRouteStudio.mapInstance.setView([17.3616, 78.3245], 13);
+      }
+
+      stops.forEach((s, idx) => {
+        const isLast = idx === stops.length - 1;
+        const icon = L.divIcon({
+          className: 'studio-stop-marker',
+          html: '<div style="background:' + (isLast ? '#E51F35' : '#103754') + '; color:white; width:24px; height:24px; border-radius:50%; border:2px solid white; box-shadow:0 2px 6px rgba(0,0,0,0.3); display:flex; align-items:center; justify-content:center; font-weight:700; font-size:11px;">' + (idx + 1) + '</div>',
+          iconSize: [24, 24],
+          iconAnchor: [12, 12]
+        });
+        const marker = L.marker([s.latitude, s.longitude], { icon }).addTo(adminRouteStudio.mapInstance);
+        marker.bindPopup('<strong>Stop #' + (idx + 1) + ': ' + s.name + '</strong><br>Pickup: ' + (s.scheduled_time || 'N/A') + '<br><code>' + s.latitude.toFixed(4) + ', ' + s.longitude.toFixed(4) + '</code>');
+        adminRouteStudio.stopMarkers.push(marker);
+      });
+
+      setTimeout(() => {
+        if (adminRouteStudio.mapInstance) adminRouteStudio.mapInstance.invalidateSize();
+      }, 100);
+    }
+
     window.openManageStopsModal = (routeId) => {
       const route = adminState.routes.find(r => r.id === routeId);
       if (!route) return;
 
-      document.getElementById('manage-stops-route-title').textContent = 'Manage Route Stops • ' + route.code;
-      document.getElementById('manage-stops-route-subtitle').textContent = route.name + ' (' + route.origin + ' → ' + route.destination + ')';
-      document.getElementById('add-stop-route-id').value = route.id;
+      adminRouteStudio.route = route;
+      adminRouteStudio.stops = (route.stops || []).map(s => ({ ...s }));
+      adminRouteStudio.polyline = route.polyline ? [...route.polyline] : [];
+      adminRouteStudio.geometrySource = route.geometry_source || (route.polyline && route.polyline.length >= 2 ? 'SAVED_GEOMETRY' : 'STRAIGHT_LINE_FALLBACK');
+      adminRouteStudio.distanceMeters = route.distance_meters || null;
+      adminRouteStudio.hasUnsavedChanges = false;
+      adminRouteStudio.pickCoordinatesMode = false;
 
-      const canWrite = adminState.currentRole === 'COR' || adminState.currentRole === 'SAD';
-      const formAdd = document.getElementById('form-add-stop').parentElement;
-      if (formAdd) formAdd.style.display = canWrite ? 'block' : 'none';
-
-      const tbody = document.getElementById('manage-stops-table-body');
-      tbody.innerHTML = '';
-
-      if (route.stops && route.stops.length > 0) {
-        route.stops.forEach((s, idx) => {
-          const row = document.createElement('tr');
-          row.innerHTML = \`
-            <td><strong>\${idx + 1}</strong></td>
-            <td><strong>\${s.name}</strong></td>
-            <td>\${s.scheduled_time}</td>
-            <td><code>\${s.latitude.toFixed(4)}, \${s.longitude.toFixed(4)}</code></td>
-            <td>
-              \${canWrite ? \`<button class="btn-table-action btn-table-danger" onclick="removeStopFromRoute('\${route.id}', '\${s.id}')">Remove</button>\` : '&mdash;'}
-            </td>
-          \`;
-          tbody.appendChild(row);
-        });
-      } else {
-        tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; color:var(--text-muted); padding:16px;">No stops defined on this route.</td></tr>';
+      const titleEl = document.getElementById('manage-stops-route-title');
+      if (titleEl) {
+        titleEl.innerHTML = '<span>Route Studio • ' + route.code + '</span><span id="studio-unsaved-badge" style="display:none; font-size:11px; background:#FEF3C7; color:#92400E; padding:2px 8px; border-radius:4px; font-weight:700;">⚠️ Unsaved Changes</span>';
       }
+      const subEl = document.getElementById('manage-stops-route-subtitle');
+      if (subEl) {
+        subEl.textContent = route.name + ' (' + route.origin + ' → ' + route.destination + ')';
+      }
+      const errBanner = document.getElementById('studio-error-banner');
+      if (errBanner) errBanner.style.display = 'none';
 
+      const routeIdInput = document.getElementById('add-stop-route-id');
+      if (routeIdInput) routeIdInput.value = route.id;
+
+      updateStudioMetrics();
+      renderStudioStopsList();
       openModal('modal-manage-stops');
-    };
 
-    window.removeStopFromRoute = async (routeId, stopId) => {
-      if (!confirm('Are you sure you want to remove this stop from the route?')) return;
-      try {
-        const res = await fetch('/api/v1/routes/' + routeId + '/stops/' + stopId, { method: 'DELETE' }).then(r => r.json());
-        if (res.success) {
-          showFeedback('Stop removed successfully.');
-          await loadAdminData();
-          openManageStopsModal(routeId);
-        } else {
-          showFeedback(res.error?.message || 'Failed to remove stop', true);
-        }
-      } catch (e) {
-        showFeedback('Network error removing stop', true);
-      }
+      setTimeout(() => {
+        renderStudioMap();
+      }, 150);
     };
 
     // Actions
@@ -2038,38 +2405,218 @@ export function renderAdminHtml(): string {
       }
     };
 
-    document.getElementById('form-add-stop').onsubmit = async (e) => {
-      e.preventDefault();
-      const fd = new FormData(e.target);
-      const routeId = fd.get('route_id');
-      const route = adminState.routes.find(r => r.id === routeId);
-      const nextSeq = (route && route.stops ? route.stops.length : 0) + 1;
-
-      const payload = {
-        name: fd.get('name'),
-        sequence: nextSeq,
-        latitude: parseFloat(fd.get('latitude')),
-        longitude: parseFloat(fd.get('longitude')),
-        scheduled_time: fd.get('scheduled_time')
-      };
-
-      try {
-        const res = await fetch('/api/v1/routes/' + routeId + '/stops', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        }).then(r => r.json());
-
-        if (res.success) {
-          e.target.reset();
-          showFeedback('Stop ' + payload.name + ' added to route.');
-          await loadAdminData();
-          openManageStopsModal(routeId);
+    // Route Studio: Toggle Pick on Map Mode
+    const btnTogglePick = document.getElementById('btn-toggle-pick-mode');
+    if (btnTogglePick) {
+      btnTogglePick.onclick = () => {
+        adminRouteStudio.pickCoordinatesMode = !adminRouteStudio.pickCoordinatesMode;
+        const lbl = document.getElementById('lbl-pick-mode');
+        const mapEl = document.getElementById('admin-route-map');
+        if (adminRouteStudio.pickCoordinatesMode) {
+          if (lbl) lbl.textContent = 'Click Map Now...';
+          if (mapEl) mapEl.style.cursor = 'crosshair';
         } else {
-          showFeedback(res.error?.message || 'Failed to add stop', true);
+          if (lbl) lbl.textContent = 'Pick on Map';
+          if (mapEl) mapEl.style.cursor = '';
         }
-      } catch (err) {
-        showFeedback('Network error adding stop', true);
+      };
+    }
+
+    // Route Studio: Recalculate Road Geometry (OSRM)
+    const btnRecalc = document.getElementById('btn-studio-recalculate');
+    if (btnRecalc) {
+      btnRecalc.onclick = async () => {
+        const errBanner = document.getElementById('studio-error-banner');
+        if (errBanner) errBanner.style.display = 'none';
+
+        if (adminRouteStudio.stops.length < 2) {
+          if (errBanner) {
+            errBanner.textContent = 'At least 2 ordered stops are required to calculate road route geometry.';
+            errBanner.style.display = 'block';
+          }
+          return;
+        }
+
+        const originalText = btnRecalc.innerHTML;
+        btnRecalc.disabled = true;
+        btnRecalc.innerHTML = '<span>⏳</span> <span>Calculating Road Route...</span>';
+
+        try {
+          const res = await fetch('/api/v1/routes/preview-geometry', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ stops: adminRouteStudio.stops })
+          }).then(r => r.json());
+
+          if (res.success && res.geometry) {
+            adminRouteStudio.polyline = res.geometry.polyline;
+            adminRouteStudio.geometrySource = res.geometry.source;
+            adminRouteStudio.distanceMeters = res.geometry.distanceMeters;
+            adminRouteStudio.hasUnsavedChanges = true;
+            updateStudioMetrics();
+            renderStudioMap();
+            showFeedback('Route road geometry calculated: ' + res.geometry.source + ' (' + (res.geometry.distanceMeters / 1000).toFixed(1) + ' km)');
+          } else {
+            if (errBanner) {
+              errBanner.textContent = res.message || 'Routing provider unavailable. Retaining existing geometry or straight-line fallback.';
+              errBanner.style.display = 'block';
+            }
+          }
+        } catch (e) {
+          if (errBanner) {
+            errBanner.textContent = 'Network interruption contacting routing service: ' + e.message;
+            errBanner.style.display = 'block';
+          }
+        } finally {
+          btnRecalc.disabled = false;
+          btnRecalc.innerHTML = originalText;
+        }
+      };
+    }
+
+    // Route Studio: Save Route Changes
+    const btnSaveRoute = document.getElementById('btn-studio-save');
+    if (btnSaveRoute) {
+      btnSaveRoute.onclick = async () => {
+        const errBanner = document.getElementById('studio-error-banner');
+        if (errBanner) errBanner.style.display = 'none';
+
+        if (adminRouteStudio.stops.length < 2) {
+          if (errBanner) {
+            errBanner.textContent = 'Cannot save route: minimum 2 stops required.';
+            errBanner.style.display = 'block';
+          }
+          return;
+        }
+
+        // Validate coordinates
+        for (let i = 0; i < adminRouteStudio.stops.length; i++) {
+          const s = adminRouteStudio.stops[i];
+          if (isNaN(s.latitude) || s.latitude < 8.0 || s.latitude > 37.0) {
+            if (errBanner) {
+              errBanner.textContent = 'Validation error on Stop #' + (i + 1) + ' (' + s.name + '): Latitude must be between 8.0° and 37.0° N.';
+              errBanner.style.display = 'block';
+            }
+            return;
+          }
+          if (isNaN(s.longitude) || s.longitude < 68.0 || s.longitude > 97.0) {
+            if (errBanner) {
+              errBanner.textContent = 'Validation error on Stop #' + (i + 1) + ' (' + s.name + '): Longitude must be between 68.0° and 97.0° E.';
+              errBanner.style.display = 'block';
+            }
+            return;
+          }
+        }
+
+        const originalText = btnSaveRoute.innerHTML;
+        btnSaveRoute.disabled = true;
+        btnSaveRoute.innerHTML = '💾 Saving Route to Store...';
+
+        const payload = {
+          stops: adminRouteStudio.stops.map(s => ({
+            name: s.name,
+            sequence: s.sequence,
+            latitude: s.latitude,
+            longitude: s.longitude,
+            scheduled_time: s.scheduled_time
+          })),
+          polyline: adminRouteStudio.polyline,
+          geometry_source: adminRouteStudio.geometrySource,
+          distance_meters: adminRouteStudio.distanceMeters
+        };
+
+        try {
+          const res = await fetch('/api/v1/routes/' + adminRouteStudio.route.id, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          }).then(r => r.json());
+
+          if (res.success) {
+            adminRouteStudio.hasUnsavedChanges = false;
+            closeModal('modal-manage-stops');
+            showFeedback('Route ' + adminRouteStudio.route.code + ' saved and persisted successfully.');
+            await loadAdminData();
+          } else {
+            if (errBanner) {
+              errBanner.textContent = res.error?.message || 'Failed to save route changes.';
+              errBanner.style.display = 'block';
+            }
+          }
+        } catch (err) {
+          if (errBanner) {
+            errBanner.textContent = 'Network error saving route: ' + err.message;
+            errBanner.style.display = 'block';
+          }
+        } finally {
+          btnSaveRoute.disabled = false;
+          btnSaveRoute.innerHTML = originalText;
+        }
+      };
+    }
+
+    // Route Studio: Add New Stop Form Handler
+    document.getElementById('form-add-stop').onsubmit = (e) => {
+      e.preventDefault();
+      const errBanner = document.getElementById('studio-error-banner');
+      if (errBanner) errBanner.style.display = 'none';
+
+      const fd = new FormData(e.target);
+      const name = String(fd.get('name') || '').trim();
+      const scheduledTime = String(fd.get('scheduled_time') || '').trim();
+      const lat = parseFloat(fd.get('latitude'));
+      const lng = parseFloat(fd.get('longitude'));
+
+      if (!name) {
+        if (errBanner) {
+          errBanner.textContent = 'Stop name cannot be empty.';
+          errBanner.style.display = 'block';
+        }
+        return;
+      }
+      if (isNaN(lat) || lat < 8.0 || lat > 37.0) {
+        if (errBanner) {
+          errBanner.textContent = 'Latitude must be between 8.0° and 37.0° N (India bounds).';
+          errBanner.style.display = 'block';
+        }
+        return;
+      }
+      if (isNaN(lng) || lng < 68.0 || lng > 97.0) {
+        if (errBanner) {
+          errBanner.textContent = 'Longitude must be between 68.0° and 97.0° E (India bounds).';
+          errBanner.style.display = 'block';
+        }
+        return;
+      }
+
+      // Warn on duplicate stop name
+      if (adminRouteStudio.stops.some(s => s.name.toLowerCase() === name.toLowerCase())) {
+        if (!confirm('A stop with the name "' + name + '" already exists on this corridor. Do you still wish to add it?')) {
+          return;
+        }
+      }
+
+      adminRouteStudio.stops.push({
+        id: 'stop-' + Date.now(),
+        name: name,
+        sequence: adminRouteStudio.stops.length + 1,
+        latitude: lat,
+        longitude: lng,
+        scheduled_time: scheduledTime
+      });
+
+      adminRouteStudio.hasUnsavedChanges = true;
+      adminRouteStudio.polyline = [];
+      adminRouteStudio.geometrySource = 'STRAIGHT_LINE_FALLBACK';
+
+      updateStudioMetrics();
+      renderStudioStopsList();
+      renderStudioMap();
+
+      const nameInput = document.getElementById('studio-new-stop-name');
+      if (nameInput) {
+        nameInput.value = '';
+        nameInput.focus();
       }
     };
 
@@ -2410,6 +2957,12 @@ export function renderAdminHtml(): string {
     // Sidebar navigation
     document.querySelectorAll('.nav-link-btn').forEach(btn => {
       btn.onclick = () => {
+        if (adminRouteStudio.hasUnsavedChanges) {
+          if (!confirm('You have unsaved route changes in Route Studio. Are you sure you want to discard your edits and switch pages?')) {
+            return;
+          }
+          adminRouteStudio.hasUnsavedChanges = false;
+        }
         const page = btn.dataset.page;
         adminState.currentPage = page;
         document.querySelectorAll('.nav-link-btn').forEach(b => b.classList.remove('active'));

@@ -58,6 +58,14 @@ export const stopSummarySchema = z.object({
 
 export type StopSummary = z.infer<typeof stopSummarySchema>;
 
+export const routeGeometrySourceSchema = z.enum([
+  'ROUTING_PROVIDER',
+  'SAVED_GEOMETRY',
+  'STRAIGHT_LINE_FALLBACK',
+]);
+
+export type RouteGeometrySource = z.infer<typeof routeGeometrySourceSchema>;
+
 export const routeDetailSchema = z.object({
   id: z.string().uuid(),
   name: z.string(),
@@ -67,6 +75,9 @@ export const routeDetailSchema = z.object({
   polyline: z.array(z.tuple([z.number(), z.number()])),
   stops: z.array(stopSummarySchema),
   active_buses: z.number().int().min(0),
+  geometry_source: routeGeometrySourceSchema.optional(),
+  distance_meters: z.number().optional(),
+  updated_at: z.string().optional(),
 });
 
 export type RouteDetail = z.infer<typeof routeDetailSchema>;

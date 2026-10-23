@@ -3,6 +3,7 @@ import { fleetDataStore } from '../store/fleet-data-store.js';
 import { sendErrorResponse } from '../middleware/security.js';
 import { logger } from '@vjit/logger';
 import type { UserRole } from '@vjit/contracts';
+import { validateRouteStops, calculateRouteGeometry } from '@vjit/domain';
 
 /**
  * Parses JSON body from incoming request safely
@@ -81,15 +82,115 @@ export async function handleFleetApiRoutes(
     }
   }
 
-  // POST /api/v1/routes: Create new route
-  if (method === 'POST' && pathname === '/api/v1/routes') {
+  // POST /api/v1/routes/preview-geometry: Preview road-following geometry without persisting
+  if (method === 'POST' && pathname === '/api/v1/routes/preview-geometry') {
     try {
-      const body = await parseJsonBody<{ name: string; code: string; origin: string; destination: string }>(req);
+      const body = await parseJsonBody<{
+        stops: Array<{ name: string; sequence: number; latitude: number; longitude: number; scheduled_time?: string }>;
+        existing_polyline?: [number, number][];
+      }>(req);
+
+      if (!body.stops || !Array.isArray(body.stops)) {
+        sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'An array of stops is required for geometry preview.', requestId);
+        return true;
+      }
+
+      const validation = validateRouteStops(body.stops);
+      if (!validation.isValid) {
+        sendJsonResponse(res, 400, {
+          success: false,
+          code: 'VALIDATION_ERROR',
+          message: validation.errors.join('; '),
+          errors: validation.errors,
+          problematicStopIds: validation.problematicStopIds,
+          request_id: requestId,
+        }, requestId);
+        return true;
+      }
+
+      const geometryOptions: { existingPolyline?: [number, number][] } = {};
+      if (body.existing_polyline) {
+        geometryOptions.existingPolyline = body.existing_polyline;
+      }
+      const geometry = await calculateRouteGeometry(body.stops, geometryOptions);
+
+      sendJsonResponse(res, 200, { success: true, geometry, request_id: requestId }, requestId);
+      return true;
+    } catch (e) {
+      sendErrorResponse(res, 400, 'BAD_REQUEST', (e as Error).message, requestId);
+      return true;
+    }
+  }
+
+  // POST /api/v1/routes: Create new route with stops & geometry
+  if (method === 'POST' && pathname === '/api/v1/routes') {
+    const user = fleetDataStore.getCurrentUser();
+    if (user.role !== 'COR' && user.role !== 'SAD') {
+      sendErrorResponse(res, 403, 'FORBIDDEN', 'Role Unauthorized: Only Coordinators and Super Admins can create transit routes.', requestId);
+      return true;
+    }
+
+    try {
+      const body = await parseJsonBody<{
+        name: string;
+        code: string;
+        origin: string;
+        destination: string;
+        stops?: Array<{ name: string; sequence: number; latitude: number; longitude: number; scheduled_time?: string }>;
+        polyline?: [number, number][];
+        geometry_source?: 'ROUTING_PROVIDER' | 'SAVED_GEOMETRY' | 'STRAIGHT_LINE_FALLBACK';
+      }>(req);
+
       if (!body.name || !body.code || !body.origin || !body.destination) {
         sendErrorResponse(res, 400, 'VALIDATION_ERROR', 'Name, code, origin, and destination are required.', requestId);
         return true;
       }
-      const newRoute = fleetDataStore.createRoute(body);
+
+      let polyline = body.polyline;
+      let geometrySource = body.geometry_source;
+
+      if (body.stops && body.stops.length >= 2) {
+        const validation = validateRouteStops(body.stops);
+        if (!validation.isValid) {
+          sendJsonResponse(res, 400, {
+            success: false,
+            code: 'VALIDATION_ERROR',
+            message: validation.errors.join('; '),
+            errors: validation.errors,
+            problematicStopIds: validation.problematicStopIds,
+            request_id: requestId,
+          }, requestId);
+          return true;
+        }
+
+        if (!polyline || polyline.length < 2) {
+          const geomResult = await calculateRouteGeometry(body.stops);
+          polyline = geomResult.polyline;
+          geometrySource = geomResult.source;
+        }
+      }
+
+      const newRoute = fleetDataStore.createRoute({
+        name: body.name,
+        code: body.code,
+        origin: body.origin,
+        destination: body.destination,
+        ...(body.stops ? { stops: body.stops } : {}),
+        ...(polyline ? { polyline } : {}),
+        ...(geometrySource ? { geometry_source: geometrySource } : {}),
+      });
+
+      fleetDataStore.recordAuditLog(
+        user.email,
+        user.role,
+        'ROUTE_CREATED',
+        'ROUTE',
+        newRoute.id,
+        'Transit corridor created with validated geometry and stops',
+        null,
+        newRoute as unknown as Record<string, unknown>,
+      );
+
       logger.info('Route created by administrator', { routeId: newRoute.id, code: newRoute.code });
       sendJsonResponse(res, 201, { success: true, route: newRoute, request_id: requestId }, requestId);
       return true;
@@ -99,16 +200,80 @@ export async function handleFleetApiRoutes(
     }
   }
 
-  // PUT /api/v1/routes/:id: Update route
-  if ((method === 'PUT' || method === 'PATCH') && pathname.startsWith('/api/v1/routes/') && !pathname.includes('/stops')) {
+  // PUT /api/v1/routes/:id: Update route with stops & geometry
+  if ((method === 'PUT' || method === 'PATCH') && pathname.startsWith('/api/v1/routes/') && !pathname.includes('/stops') && !pathname.includes('/preview-geometry')) {
+    const user = fleetDataStore.getCurrentUser();
+    if (user.role !== 'COR' && user.role !== 'SAD') {
+      sendErrorResponse(res, 403, 'FORBIDDEN', 'Role Unauthorized: Only Coordinators and Super Admins can modify transit routes.', requestId);
+      return true;
+    }
+
     const routeId = pathname.replace('/api/v1/routes/', '');
+    const oldRoute = fleetDataStore.getRouteById(routeId);
+    if (!oldRoute) {
+      sendErrorResponse(res, 404, 'NOT_FOUND', `Route ${routeId} not found.`, requestId);
+      return true;
+    }
+
     try {
-      const body = await parseJsonBody<Record<string, unknown>>(req);
-      const updated = fleetDataStore.updateRoute(routeId, body);
-      if (!updated) {
-        sendErrorResponse(res, 404, 'NOT_FOUND', `Route ${routeId} not found.`, requestId);
-        return true;
+      const body = await parseJsonBody<{
+        name?: string;
+        code?: string;
+        origin?: string;
+        destination?: string;
+        stops?: Array<{ id?: string; name: string; sequence: number; latitude: number; longitude: number; scheduled_time?: string; status?: 'SCHEDULED' | 'ARRIVING' | 'DEPARTED' }>;
+        polyline?: [number, number][];
+        geometry_source?: 'ROUTING_PROVIDER' | 'SAVED_GEOMETRY' | 'STRAIGHT_LINE_FALLBACK';
+        calculate_geometry?: boolean;
+      }>(req);
+
+      let polyline = body.polyline;
+      let geometrySource = body.geometry_source;
+
+      if (body.stops && body.stops.length >= 2) {
+        const validation = validateRouteStops(body.stops);
+        if (!validation.isValid) {
+          sendJsonResponse(res, 400, {
+            success: false,
+            code: 'VALIDATION_ERROR',
+            message: validation.errors.join('; '),
+            errors: validation.errors,
+            problematicStopIds: validation.problematicStopIds,
+            request_id: requestId,
+          }, requestId);
+          return true;
+        }
+
+        if (body.calculate_geometry || (!polyline && JSON.stringify(body.stops) !== JSON.stringify(oldRoute.stops))) {
+          const geomResult = await calculateRouteGeometry(body.stops, {
+            existingPolyline: oldRoute.polyline,
+          });
+          polyline = geomResult.polyline;
+          geometrySource = geomResult.source;
+        }
       }
+
+      const updated = fleetDataStore.updateRoute(routeId, {
+        ...(body.name !== undefined ? { name: body.name } : {}),
+        ...(body.code !== undefined ? { code: body.code } : {}),
+        ...(body.origin !== undefined ? { origin: body.origin } : {}),
+        ...(body.destination !== undefined ? { destination: body.destination } : {}),
+        ...(body.stops !== undefined ? { stops: body.stops } : {}),
+        ...(polyline !== undefined ? { polyline } : {}),
+        ...(geometrySource !== undefined ? { geometry_source: geometrySource } : {}),
+      });
+
+      fleetDataStore.recordAuditLog(
+        user.email,
+        user.role,
+        'ROUTE_UPDATED',
+        'ROUTE',
+        routeId,
+        'Transit corridor and geometry updated',
+        oldRoute as unknown as Record<string, unknown>,
+        updated as unknown as Record<string, unknown>,
+      );
+
       logger.info('Route updated', { routeId });
       sendJsonResponse(res, 200, { success: true, route: updated, request_id: requestId }, requestId);
       return true;
@@ -119,13 +284,29 @@ export async function handleFleetApiRoutes(
   }
 
   // DELETE /api/v1/routes/:id: Delete route
-  if (method === 'DELETE' && pathname.startsWith('/api/v1/routes/') && !pathname.includes('/stops')) {
+  if (method === 'DELETE' && pathname.startsWith('/api/v1/routes/') && !pathname.includes('/stops') && !pathname.includes('/preview-geometry')) {
+    const user = fleetDataStore.getCurrentUser();
+    if (user.role !== 'COR' && user.role !== 'SAD') {
+      sendErrorResponse(res, 403, 'FORBIDDEN', 'Role Unauthorized: Only Coordinators and Super Admins can remove routes.', requestId);
+      return true;
+    }
     const routeId = pathname.replace('/api/v1/routes/', '');
+    const oldRoute = fleetDataStore.getRouteById(routeId);
     const ok = fleetDataStore.deleteRoute(routeId);
     if (!ok) {
       sendErrorResponse(res, 404, 'NOT_FOUND', `Route ${routeId} not found.`, requestId);
       return true;
     }
+    fleetDataStore.recordAuditLog(
+      user.email,
+      user.role,
+      'ROUTE_DELETED',
+      'ROUTE',
+      routeId,
+      'Transit corridor retired by administrator',
+      oldRoute as unknown as Record<string, unknown>,
+      null,
+    );
     logger.info('Route deleted', { routeId });
     sendJsonResponse(res, 200, { success: true, message: `Route ${routeId} removed.`, request_id: requestId }, requestId);
     return true;

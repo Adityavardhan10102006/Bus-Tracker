@@ -140,3 +140,25 @@ export const systemSettingRecordSchema = z.object({
   change_reason: z.string(),
 });
 export type SystemSettingRecord = z.infer<typeof systemSettingRecordSchema>;
+
+export const routeStopInputSchema = z.object({
+  id: z.string().uuid().optional(),
+  name: z.string().min(1).max(100),
+  sequence: z.number().int().positive(),
+  latitude: z.number().min(-90).max(90),
+  longitude: z.number().min(-180).max(180),
+  scheduled_time: z.string().optional(),
+  status: z.enum(['SCHEDULED', 'ARRIVING', 'DEPARTED']).optional(),
+});
+export type RouteStopInput = z.infer<typeof routeStopInputSchema>;
+
+export const routeUpsertSchema = z.object({
+  name: z.string().min(2).max(100),
+  code: z.string().min(1).max(20),
+  origin: z.string().min(1).max(100),
+  destination: z.string().min(1).max(100),
+  stops: z.array(routeStopInputSchema).optional(),
+  polyline: z.array(z.tuple([z.number(), z.number()])).optional(),
+  geometry_source: z.enum(['ROUTING_PROVIDER', 'SAVED_GEOMETRY', 'STRAIGHT_LINE_FALLBACK']).optional(),
+});
+export type RouteUpsertInput = z.infer<typeof routeUpsertSchema>;

@@ -869,10 +869,20 @@ export function renderMobileHtml(): string {
           </div>
         </div>
 
+        <!-- Route Geometry Source Indicator (Road-following vs Saved vs Straight-line fallback) -->
+        <div id="detail-geometry-notice" style="display:none; padding:6px 14px; font-size:11px; font-weight:600; background:#F8FAFC; border-bottom:1px solid var(--border-subtle); display:flex; align-items:center; justify-content:space-between;">
+          <span id="detail-geometry-text">🗺️ Road-Following Geometry</span>
+          <span id="detail-geometry-dist" style="font-size:10.5px; color:var(--text-muted);">14.2 km</span>
+        </div>
+
         <!-- Map & Route Canvas -->
         <div class="map-tracker-container">
+          <div id="map-tiles-warning" style="display:none; position:absolute; top:8px; left:8px; right:56px; background:rgba(217,119,6,0.92); color:white; padding:6px 10px; border-radius:6px; font-size:11px; z-index:25; backdrop-filter:blur(4px); box-shadow:0 2px 6px rgba(0,0,0,0.2);">
+            ⚠️ Map tile service slow or unavailable; route coordinates & live telemetry remain active.
+          </div>
           <div class="map-controls-overlay">
-            <button class="map-ctrl-btn" id="btn-recenter" title="Recenter Map">&#8982;</button>
+            <button class="map-ctrl-btn" id="btn-recenter" title="Recenter on Bus">&#8982;</button>
+            <button class="map-ctrl-btn" id="btn-fit-route" title="Fit Entire Route Corridor">&#x26F6;</button>
             <button class="map-ctrl-btn" id="btn-toggle-fallback" title="Toggle Accessible Route Card">&#9776;</button>
           </div>
           <div id="leaflet-map"></div>
@@ -1190,9 +1200,43 @@ export function renderMobileHtml(): string {
       mapInstance: null,
       busMarker: null,
       routePolyline: null,
-      stopMarkers: []
+      stopMarkers: [],
+      userInteractedWithMap: false,
+      currentRenderedRouteId: null,
+      lastRenderedStopCount: 0
     };
     window.appState = appState;
+
+    function saveMobileMapState() {
+      try {
+        if (!appState.mapInstance) return;
+        const center = appState.mapInstance.getCenter();
+        const zoom = appState.mapInstance.getZoom();
+        const stateToSave = {
+          selectedBusId: appState.selectedBusId,
+          selectedRouteFilter: appState.selectedRouteFilter,
+          center: [center.lat, center.lng],
+          zoom: zoom,
+          userInteracted: appState.userInteractedWithMap,
+          savedAt: Date.now()
+        };
+        localStorage.setItem('vjit_mobile_map_state', JSON.stringify(stateToSave));
+      } catch (_) {}
+    }
+
+    function loadSavedMobileMapState() {
+      try {
+        const raw = localStorage.getItem('vjit_mobile_map_state');
+        if (!raw) return null;
+        const parsed = JSON.parse(raw);
+        if (parsed && parsed.savedAt && (Date.now() - parsed.savedAt < 86400000)) {
+          return parsed;
+        }
+        return null;
+      } catch (_) {
+        return null;
+      }
+    }
 
     // DOM Elements
     const busesListContainer = document.getElementById('buses-list-container');
@@ -1506,77 +1550,174 @@ export function renderMobileHtml(): string {
     // Leaflet Map Initialization & Rendering
     function initOrUpdateMap(bus) {
       const mapContainer = document.getElementById('leaflet-map');
-      if (!mapContainer) return;
+      if (!mapContainer || typeof L === 'undefined') return;
 
-      const hasValidFix = bus.latitude !== null && bus.longitude !== null;
+      const hasValidFix = bus && typeof bus.latitude === 'number' && !isNaN(bus.latitude) &&
+        typeof bus.longitude === 'number' && !isNaN(bus.longitude) &&
+        bus.latitude !== null && bus.longitude !== null &&
+        bus.latitude >= -90 && bus.latitude <= 90 && bus.longitude >= -180 && bus.longitude <= 180 &&
+        bus.state !== 'UNAVAILABLE' && bus.state !== 'NOT_RUNNING';
+
       const defaultCenter = [17.3616, 78.3245]; // VJIT Main Campus
       const lat = hasValidFix ? bus.latitude : defaultCenter[0];
       const lng = hasValidFix ? bus.longitude : defaultCenter[1];
 
+      // Restore saved view state if available
+      const savedState = loadSavedMobileMapState();
+
       if (!appState.mapInstance) {
+        let initialCenter = [lat, lng];
+        let initialZoom = hasValidFix ? 14 : 13;
+
+        if (savedState && Array.isArray(savedState.center) && savedState.center.length === 2) {
+          initialCenter = savedState.center;
+          if (typeof savedState.zoom === 'number') initialZoom = savedState.zoom;
+          if (savedState.userInteracted) appState.userInteractedWithMap = true;
+        }
+
         appState.mapInstance = L.map('leaflet-map', {
           zoomControl: false,
           attributionControl: false
-        }).setView([lat, lng], hasValidFix ? 14 : 13);
+        }).setView(initialCenter, initialZoom);
 
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        const tileLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
           maxZoom: 18
         }).addTo(appState.mapInstance);
-      } else {
-        appState.mapInstance.setView([lat, lng], hasValidFix ? 14 : 13);
-      }
 
-      // Update vehicle marker
-      if (appState.busMarker) {
-        appState.mapInstance.removeLayer(appState.busMarker);
-        appState.busMarker = null;
-      }
-
-      if (hasValidFix) {
-        const busIcon = L.divIcon({
-          className: 'custom-bus-marker',
-          html: '<div style="background:#103754; color:white; border:2px solid white; border-radius:50%; width:28px; height:28px; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:11px; box-shadow:0 3px 8px rgba(0,0,0,0.3);">' + (bus.bus_number.replace('Bus ', 'B') || 'B') + '</div>',
-          iconSize: [28, 28],
-          iconAnchor: [14, 14]
+        tileLayer.on('tileerror', () => {
+          const warn = document.getElementById('map-tiles-warning');
+          if (warn) warn.style.display = 'block';
         });
 
-        appState.busMarker = L.marker([lat, lng], { icon: busIcon }).addTo(appState.mapInstance);
-        appState.busMarker.bindPopup('<strong>' + bus.bus_number + '</strong><br>' + bus.route_name).openPopup();
+        tileLayer.on('load', () => {
+          const warn = document.getElementById('map-tiles-warning');
+          if (warn) warn.style.display = 'none';
+        });
+
+        appState.mapInstance.on('movestart zoomstart', (e) => {
+          if (e && e.originalEvent) {
+            appState.userInteractedWithMap = true;
+          }
+        });
+
+        appState.mapInstance.on('moveend zoomend', () => {
+          saveMobileMapState();
+        });
       }
 
-      // Render route polyline and stop pins
-      const route = appState.routes.find(r => r.id === bus.route_id);
-      if (route && route.stops && route.stops.length > 0) {
-        if (appState.routePolyline) {
-          appState.mapInstance.removeLayer(appState.routePolyline);
+      // Handle Route Polyline & Stops
+      const route = bus ? appState.routes.find(r => r.id === bus.route_id) : null;
+      const geomNotice = document.getElementById('detail-geometry-notice');
+      const geomText = document.getElementById('detail-geometry-text');
+      const geomDist = document.getElementById('detail-geometry-dist');
+
+      if (route) {
+        if (geomNotice && geomText && geomDist) {
+          geomNotice.style.display = 'flex';
+          const distKm = route.distance_meters ? (route.distance_meters / 1000).toFixed(1) + ' km' : '';
+          geomDist.textContent = distKm;
+
+          if (route.geometry_source === 'ROUTING_PROVIDER') {
+            geomNotice.style.background = '#ECFDF5';
+            geomNotice.style.color = '#065F46';
+            geomText.innerHTML = '⚡ <strong>Road-Following Route</strong> (OSRM Engine)';
+          } else if (route.geometry_source === 'SAVED_GEOMETRY') {
+            geomNotice.style.background = '#EFF6FF';
+            geomNotice.style.color = '#1E40AF';
+            geomText.innerHTML = '💾 <strong>Verified Corridor</strong> (Saved Geometry)';
+          } else {
+            geomNotice.style.background = '#FFFBEB';
+            geomNotice.style.color = '#92400E';
+            geomText.innerHTML = '⚠️ <strong>Direct Waypoint Lines</strong> (Straight-Line Fallback)';
+          }
         }
-        appState.stopMarkers.forEach(m => appState.mapInstance.removeLayer(m));
-        appState.stopMarkers = [];
 
-        const latLngs = route.stops.map(s => [s.latitude, s.longitude]);
-        appState.routePolyline = L.polyline(latLngs, { color: '#103754', weight: 4, opacity: 0.8 }).addTo(appState.mapInstance);
+        const stops = route.stops || [];
+        const stopsChanged = appState.currentRenderedRouteId !== route.id || appState.lastRenderedStopCount !== stops.length;
 
-        route.stops.forEach((s, idx) => {
-          const isDest = idx === route.stops.length - 1;
-          const stopIcon = L.divIcon({
-            className: 'custom-stop-pin',
-            html: '<div style="background:' + (isDest ? '#E51F35' : '#64748B') + '; width:10px; height:10px; border-radius:50%; border:2px solid white; box-shadow:0 1px 4px rgba(0,0,0,0.2);"></div>',
-            iconSize: [10, 10],
-            iconAnchor: [5, 5]
+        if (stopsChanged || !appState.routePolyline) {
+          if (appState.routePolyline) {
+            appState.mapInstance.removeLayer(appState.routePolyline);
+            appState.routePolyline = null;
+          }
+          appState.stopMarkers.forEach(m => appState.mapInstance.removeLayer(m));
+          appState.stopMarkers = [];
+
+          let polyPoints = [];
+          const isFallback = route.geometry_source === 'STRAIGHT_LINE_FALLBACK';
+          if (route.polyline && Array.isArray(route.polyline) && route.polyline.length >= 2) {
+            polyPoints = route.polyline;
+          } else if (stops.length >= 2) {
+            polyPoints = stops.map(s => [s.latitude, s.longitude]);
+          }
+
+          if (polyPoints.length > 0) {
+            appState.routePolyline = L.polyline(polyPoints, {
+              color: isFallback ? '#D97706' : '#103754',
+              weight: isFallback ? 3 : 5,
+              opacity: 0.85,
+              dashArray: isFallback ? '6, 6' : undefined
+            }).addTo(appState.mapInstance);
+          }
+
+          stops.forEach((s, idx) => {
+            const isDest = idx === stops.length - 1;
+            const stopIcon = L.divIcon({
+              className: 'custom-stop-pin',
+              html: '<div style="background:' + (isDest ? '#E51F35' : '#1E4E79') + '; color:white; width:20px; height:20px; border-radius:50%; border:2px solid white; box-shadow:0 1px 4px rgba(0,0,0,0.3); display:flex; align-items:center; justify-content:center; font-size:10px; font-weight:700;">' + (idx + 1) + '</div>',
+              iconSize: [20, 20],
+              iconAnchor: [10, 10]
+            });
+            const marker = L.marker([s.latitude, s.longitude], { icon: stopIcon }).addTo(appState.mapInstance);
+            marker.bindPopup('<strong>Stop #' + (idx + 1) + ': ' + s.name + '</strong><br>Scheduled: ' + (s.scheduled_time || 'N/A'));
+            appState.stopMarkers.push(marker);
           });
-          const marker = L.marker([s.latitude, s.longitude], { icon: stopIcon }).addTo(appState.mapInstance);
-          marker.bindPopup('<strong>' + s.name + '</strong><br>Scheduled: ' + s.scheduled_time);
-          appState.stopMarkers.push(marker);
-        });
 
-        if (!hasValidFix && latLngs.length > 1) {
-          appState.mapInstance.fitBounds(latLngs, { padding: [20, 20] });
+          appState.currentRenderedRouteId = route.id;
+          appState.lastRenderedStopCount = stops.length;
+
+          if (!hasValidFix && !appState.userInteractedWithMap && polyPoints.length > 1) {
+            appState.mapInstance.fitBounds(polyPoints, { padding: [24, 24] });
+          }
+        }
+      } else {
+        if (geomNotice) geomNotice.style.display = 'none';
+      }
+
+      // Smooth Vehicle Marker Update (In place, no route line flicker or viewport jumping)
+      if (hasValidFix) {
+        const busPopupContent = '<strong>' + bus.bus_number + '</strong> (' + bus.registration + ')<br>' +
+          bus.route_name + '<br>' +
+          'Speed: <strong>' + Math.round(bus.speed_kmh || 0) + ' km/h</strong> • ' +
+          (bus.age_seconds !== null ? bus.age_seconds + 's ago' : 'Live');
+
+        if (appState.busMarker) {
+          appState.busMarker.setLatLng([bus.latitude, bus.longitude]);
+          appState.busMarker.setPopupContent(busPopupContent);
+        } else {
+          const busIcon = L.divIcon({
+            className: 'custom-bus-marker',
+            html: '<div style="background:#E51F35; color:white; border:2px solid white; border-radius:50%; width:30px; height:30px; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:11px; box-shadow:0 3px 10px rgba(229,31,53,0.5);">' + (bus.bus_number.replace('Bus ', 'B') || 'B') + '</div>',
+            iconSize: [30, 30],
+            iconAnchor: [15, 15]
+          });
+          appState.busMarker = L.marker([bus.latitude, bus.longitude], { icon: busIcon }).addTo(appState.mapInstance);
+          appState.busMarker.bindPopup(busPopupContent);
+        }
+
+        if (!appState.userInteractedWithMap) {
+          appState.mapInstance.panTo([bus.latitude, bus.longitude], { animate: true, duration: 0.8 });
+        }
+      } else {
+        if (appState.busMarker) {
+          appState.mapInstance.removeLayer(appState.busMarker);
+          appState.busMarker = null;
         }
       }
 
       setTimeout(() => {
         if (appState.mapInstance) appState.mapInstance.invalidateSize();
-      }, 150);
+      }, 100);
     }
 
     // Render Stops Timeline
@@ -1630,11 +1771,43 @@ export function renderMobileHtml(): string {
       document.getElementById('stop-details-modal').classList.add('open');
     };
 
-    // Recenter map
+    // Recenter map on bus or route
     document.getElementById('btn-recenter').onclick = () => {
       const bus = appState.buses.find(b => b.bus_id === appState.selectedBusId);
-      if (bus && appState.mapInstance) {
-        appState.mapInstance.setView([bus.latitude || 17.3850, bus.longitude || 78.3650], 15);
+      if (!appState.mapInstance) return;
+      appState.userInteractedWithMap = false;
+
+      const hasValidFix = bus && typeof bus.latitude === 'number' && !isNaN(bus.latitude) &&
+        typeof bus.longitude === 'number' && !isNaN(bus.longitude) &&
+        bus.latitude !== null && bus.longitude !== null &&
+        bus.state !== 'UNAVAILABLE' && bus.state !== 'NOT_RUNNING';
+
+      if (hasValidFix) {
+        appState.mapInstance.setView([bus.latitude, bus.longitude], 15, { animate: true });
+      } else if (appState.routePolyline) {
+        appState.mapInstance.fitBounds(appState.routePolyline.getBounds(), { padding: [24, 24], animate: true });
+      } else {
+        appState.mapInstance.setView([17.3616, 78.3245], 14, { animate: true });
+      }
+      saveMobileMapState();
+    };
+
+    // Fit Entire Route Corridor
+    document.getElementById('btn-fit-route').onclick = () => {
+      if (!appState.mapInstance) return;
+      if (appState.routePolyline) {
+        appState.mapInstance.fitBounds(appState.routePolyline.getBounds(), { padding: [30, 30], animate: true });
+        appState.userInteractedWithMap = true;
+        saveMobileMapState();
+      } else {
+        const bus = appState.buses.find(b => b.bus_id === appState.selectedBusId);
+        const route = bus ? appState.routes.find(r => r.id === bus.route_id) : null;
+        if (route && route.stops && route.stops.length > 0) {
+          const latLngs = route.stops.map(s => [s.latitude, s.longitude]);
+          appState.mapInstance.fitBounds(latLngs, { padding: [30, 30], animate: true });
+          appState.userInteractedWithMap = true;
+          saveMobileMapState();
+        }
       }
     };
 
@@ -1979,6 +2152,16 @@ export function renderMobileHtml(): string {
         if (banner) banner.style.display = 'none';
       };
     }
+
+    // Window resize & orientation change map handling
+    window.addEventListener('resize', () => {
+      if (appState.mapInstance) appState.mapInstance.invalidateSize();
+    });
+    window.addEventListener('orientationchange', () => {
+      setTimeout(() => {
+        if (appState.mapInstance) appState.mapInstance.invalidateSize();
+      }, 200);
+    });
 
     // Polling every 10s
     setInterval(loadAllData, 10000);

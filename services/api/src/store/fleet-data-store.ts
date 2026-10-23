@@ -1226,56 +1226,109 @@ export class FleetDataStore
     code: string;
     origin: string;
     destination: string;
-    polyline?: Array<[number, number]>;
+    polyline?: Array<[number, number]> | undefined;
+    stops?: Array<{
+      id?: string | undefined;
+      name: string;
+      sequence: number;
+      latitude: number;
+      longitude: number;
+      scheduled_time?: string | undefined;
+      status?: 'SCHEDULED' | 'ARRIVING' | 'DEPARTED' | undefined;
+    }> | undefined;
+    geometry_source?: 'ROUTING_PROVIDER' | 'SAVED_GEOMETRY' | 'STRAIGHT_LINE_FALLBACK' | undefined;
   }): RouteDetail {
     const id = `00000000-0000-4000-8000-${Date.now().toString(16).padStart(12, '0')}`;
+    const stops = input.stops !== undefined
+      ? input.stops.map((s, idx) => ({
+          id: s.id || `10000000-0000-4000-8000-${(Date.now() + idx).toString(16).padStart(12, '0')}`,
+          name: s.name,
+          sequence: s.sequence ?? idx + 1,
+          latitude: s.latitude,
+          longitude: s.longitude,
+          scheduled_time: s.scheduled_time || '08:00 AM',
+          status: s.status || 'SCHEDULED',
+        })).sort((a, b) => a.sequence - b.sequence)
+      : [];
+
+    const polyline = input.polyline && input.polyline.length >= 2
+      ? input.polyline
+      : stops.map(s => [s.latitude, s.longitude] as [number, number]);
+
     const newRoute: RouteDetail = {
       id,
       name: input.name,
       code: input.code,
       origin: input.origin,
       destination: input.destination,
-      polyline: input.polyline ?? [
-        [17.3850, 78.4867], // Hyderabad center
-        [17.3616, 78.3245], // VJIT Main Gate
-      ],
-      stops: [
-        {
-          id: `10000000-0000-4000-8000-${Date.now().toString(16).padStart(12, '0')}`,
-          name: input.origin,
-          sequence: 1,
-          latitude: 17.3850,
-          longitude: 78.4867,
-          scheduled_time: '07:45 AM',
-          status: 'SCHEDULED',
-        },
-        {
-          id: `20000000-0000-4000-8000-${Date.now().toString(16).padStart(12, '0')}`,
-          name: input.destination,
-          sequence: 2,
-          latitude: 17.3616,
-          longitude: 78.3245,
-          scheduled_time: '09:00 AM',
-          status: 'SCHEDULED',
-        },
-      ],
+      polyline,
+      stops,
       active_buses: 0,
+      geometry_source: input.geometry_source || (input.polyline ? 'SAVED_GEOMETRY' : 'STRAIGHT_LINE_FALLBACK'),
+      updated_at: new Date().toISOString(),
     };
     this.routes.push(newRoute);
+    this.savePersistedStore();
     return newRoute;
   }
 
-  updateRoute(id: string, updates: Partial<RouteDetail>): RouteDetail | null {
+  updateRoute(id: string, updates: {
+    name?: string | undefined;
+    code?: string | undefined;
+    origin?: string | undefined;
+    destination?: string | undefined;
+    polyline?: Array<[number, number]> | undefined;
+    stops?: Array<{
+      id?: string | undefined;
+      name: string;
+      sequence: number;
+      latitude: number;
+      longitude: number;
+      scheduled_time?: string | undefined;
+      status?: 'SCHEDULED' | 'ARRIVING' | 'DEPARTED' | undefined;
+    }> | undefined;
+    geometry_source?: 'ROUTING_PROVIDER' | 'SAVED_GEOMETRY' | 'STRAIGHT_LINE_FALLBACK' | undefined;
+    distance_meters?: number | undefined;
+  }): RouteDetail | null {
     const index = this.routes.findIndex(r => r.id === id);
     if (index === -1) return null;
-    this.routes[index] = { ...this.routes[index]!, ...updates };
+    const current = this.routes[index]!;
+    const updatedStops = updates.stops
+      ? updates.stops.map((s, idx) => ({
+          id: s.id || `10000000-0000-4000-8000-${(Date.now() + idx).toString(16).padStart(12, '0')}`,
+          name: s.name,
+          sequence: s.sequence ?? idx + 1,
+          latitude: s.latitude,
+          longitude: s.longitude,
+          scheduled_time: s.scheduled_time || '08:00 AM',
+          status: s.status || 'SCHEDULED',
+        })).sort((a, b) => a.sequence - b.sequence)
+      : current.stops;
+
+    this.routes[index] = {
+      ...current,
+      ...(updates.name !== undefined ? { name: updates.name } : {}),
+      ...(updates.code !== undefined ? { code: updates.code } : {}),
+      ...(updates.origin !== undefined ? { origin: updates.origin } : {}),
+      ...(updates.destination !== undefined ? { destination: updates.destination } : {}),
+      ...(updates.polyline !== undefined ? { polyline: updates.polyline } : {}),
+      ...(updates.geometry_source !== undefined ? { geometry_source: updates.geometry_source } : {}),
+      ...(updates.distance_meters !== undefined ? { distance_meters: updates.distance_meters } : {}),
+      stops: updatedStops,
+      updated_at: new Date().toISOString(),
+    };
+    this.savePersistedStore();
     return this.routes[index]!;
   }
 
   deleteRoute(id: string): boolean {
     const initialLen = this.routes.length;
     this.routes = this.routes.filter(r => r.id !== id);
-    return this.routes.length < initialLen;
+    const removed = this.routes.length < initialLen;
+    if (removed) {
+      this.savePersistedStore();
+    }
+    return removed;
   }
 
   addStopToRoute(
@@ -1296,6 +1349,8 @@ export class FleetDataStore
       status: 'SCHEDULED',
     });
     route.stops.sort((a, b) => a.sequence - b.sequence);
+    route.updated_at = new Date().toISOString();
+    this.savePersistedStore();
     return route;
   }
 
@@ -1303,6 +1358,8 @@ export class FleetDataStore
     const route = this.routes.find(r => r.id === routeId);
     if (!route) return null;
     route.stops = route.stops.filter(s => s.id !== stopId);
+    route.updated_at = new Date().toISOString();
+    this.savePersistedStore();
     return route;
   }
 
@@ -1905,6 +1962,7 @@ export class FleetDataStore
       const data = {
         version: 1,
         saved_at: new Date().toISOString(),
+        routes: this.routes,
         buses: this.buses,
         links: this.links,
         systemSettings: this.systemSettings,
@@ -1924,6 +1982,16 @@ export class FleetDataStore
       if (!fs.existsSync(this.persistencePath)) return;
       const raw = fs.readFileSync(this.persistencePath, 'utf-8');
       const data = JSON.parse(raw);
+      if (Array.isArray(data.routes)) {
+        for (const savedRoute of data.routes) {
+          const idx = this.routes.findIndex(r => r.id === savedRoute.id);
+          if (idx >= 0) {
+            this.routes[idx] = savedRoute;
+          } else {
+            this.routes.push(savedRoute);
+          }
+        }
+      }
       if (Array.isArray(data.buses)) {
         for (const savedBus of data.buses) {
           const idx = this.buses.findIndex(b => b.id === savedBus.id);
